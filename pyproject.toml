@@ -1,0 +1,40 @@
+[project]
+name = "tamadesk"
+version = "0.1.0"
+description = "A pixel companion that turns your day into an adventure: quests, a daily log, reminders and drafts, powered by your own Claude Code."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "typer>=0.12",
+    "pydantic>=2.8",
+    "pyyaml>=6.0",
+    "platformdirs>=4.2",
+    "apscheduler>=3.10,<4",
+    "dateparser>=1.2",
+]
+
+[project.scripts]
+tamadesk = "tamadesk.cli:app"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6", "httpx>=0.27"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tamadesk"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["DTZ", "S101"]

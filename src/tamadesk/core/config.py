@@ -1,0 +1,77 @@
+"""Settings live in the user's data folder (not the repo), so an installed tamadesk works anywhere.
+
+Linux: ~/.local/share/tamadesk, macOS: ~/Library/Application Support/tamadesk,
+Windows: %LOCALAPPDATA%\\tamadesk. Override with TAMADESK_HOME.
+"""
+
+from __future__ import annotations
+
+import os
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+import yaml
+from platformdirs import user_data_path
+from pydantic import BaseModel
+
+BrainKind = Literal["claude_code", "ollama"]
+
+
+def home_dir() -> Path:
+    if env := os.environ.get("TAMADESK_HOME"):
+        return Path(env).expanduser().resolve()
+    return user_data_path("tamadesk", appauthor=False)
+
+
+class ServerCfg(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 7778
+
+
+class BrainCfg(BaseModel):
+    kind: BrainKind = "claude_code"
+    model: str = "sonnet"  # claude_code: sonnet|opus|haiku; ollama: any pulled model
+    ollama_url: str = "http://127.0.0.1:11434"
+    timeout_s: int = 180
+
+
+class DayCfg(BaseModel):
+    recap_hour: int = 21  # local hour for the evening recap
+    todo_goal: int = 3  # todos per day that count as a "good day"
+
+
+class Settings(BaseModel):
+    home: Path
+    server: ServerCfg = ServerCfg()
+    brain: BrainCfg = BrainCfg()
+    day: DayCfg = DayCfg()
+
+    @property
+    def db_path(self) -> Path:
+        return self.home / "tamadesk.db"
+
+    @property
+    def config_path(self) -> Path:
+        return self.home / "config.yaml"
+
+
+def load_settings(home: Path | None = None) -> Settings:
+    home = home or home_dir()
+    home.mkdir(parents=True, exist_ok=True)
+    path = home / "config.yaml"
+    raw = (yaml.safe_load(path.read_text()) or {}) if path.is_file() else {}
+    s = Settings(home=home, **raw)
+    if not path.is_file():
+        save_settings(s)
+    return s
+
+
+def save_settings(s: Settings) -> None:
+    data = s.model_dump(mode="json", exclude={"home"})
+    s.config_path.write_text("# tamadesk settings (editable here or in the app)\n" + yaml.safe_dump(data))
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return load_settings()
