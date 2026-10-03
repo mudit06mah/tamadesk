@@ -1,0 +1,13 @@
+title: Web watch
+blurb: Keeps an eye on the web for anything you describe, e.g. "new open-source quantum simulators".
+icon: eye
+params:
+  what: {label: "What should I watch for?", default: "new open-source developer tools launches"}
+module:
+  name: Watch
+  icon: eye
+  view: feed
+  every: daily 10:00
+  sources:
+    - {type: exa, query: "${what}", limit: 10}
+  actions: [save, skip, summarize, open]

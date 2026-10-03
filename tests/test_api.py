@@ -1,4 +1,4 @@
-from tamadesk.api.app import ring_due
+from tamadesk.api.jobs import ring_due
 from tamadesk.core import db
 from tamadesk.core.config import get_settings
 
@@ -46,7 +46,7 @@ def test_log_entry_counts_today(client):
 
 
 def test_due_reminder_rings_then_dismiss(client, monkeypatch):
-    monkeypatch.setattr("tamadesk.api.app.notify", lambda *a: None)
+    monkeypatch.setattr("tamadesk.api.jobs.notify", lambda *a: None)
     conn = db.connect(get_settings().db_path)
     conn.execute("INSERT INTO reminders (text, due_at) VALUES ('stretch', datetime('now', '-1 minute'))")
     conn.execute("INSERT INTO reminders (text, due_at) VALUES ('later', datetime('now', '+1 hour'))")

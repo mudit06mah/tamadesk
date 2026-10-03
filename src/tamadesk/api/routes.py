@@ -106,6 +106,7 @@ class Companion(BaseModel):
 class NewGame(BaseModel):
     about: dict[str, str]
     companion: Companion
+    modules: list[dict] = []  # [{template, params}] picked in the "what should I watch for you" step
 
 
 @router.post("/onboarding")
@@ -119,7 +120,9 @@ def new_game(body: NewGame, conn: Conn) -> dict:
         db.set_profile(conn, "onboarded", True)
         if first:
             db.event(conn, "new_game", detail=f"met {body.companion.name}", xp=game.XP["new_game"])
-    return {"ok": True}
+    from tamadesk.api.modules import install_templates  # imports this module
+
+    return {"ok": True, "modules": install_templates(body.modules)}
 
 
 # ---------------------------------------------------------------- capture, todos, reminders
@@ -129,15 +132,19 @@ class CaptureIn(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
 
 
+def add_todo(conn: sqlite3.Connection, title: str, due: str | None = None) -> int:
+    rid = conn.execute("INSERT INTO todos (title, due_at) VALUES (?, ?)", (title, due)).lastrowid
+    db.event(conn, "todo_added", ref_id=rid, detail=title)
+    return rid
+
+
 @router.post("/capture")
 def do_capture(body: CaptureIn, conn: Conn) -> dict:
     c = capture.parse(body.text)
     due = capture.sql_ts(c.due_at) if c.due_at else None
     with db.transaction(conn):
         if c.kind == "todo":
-            rid = conn.execute("INSERT INTO todos (title, due_at) VALUES (?, ?)", (c.text, due)).lastrowid
-            db.event(conn, "todo_added", ref_id=rid, detail=c.text)
-            xp = 0
+            rid, xp = add_todo(conn, c.text, due), 0
         elif c.kind == "reminder":
             rid = conn.execute("INSERT INTO reminders (text, due_at) VALUES (?, ?)", (c.text, due)).lastrowid
             db.event(conn, "reminder_set", ref_id=rid, detail=c.text)

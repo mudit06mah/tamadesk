@@ -35,7 +35,7 @@ Principles:
 
 Every brain call is `ask(prompt, schema) -> dict`. Adding a brain means one file in `brain/`.
 
-## What's in v0.1 (this commit)
+## What's in v0.1
 
 - **New Game** onboarding:
   - A title screen.
@@ -60,6 +60,48 @@ Every brain call is `ask(prompt, schema) -> dict`. Adding a brain means one file
   one-line ask, with Copy, Redo and Toss.
 - **Journal:** every log line, grouped by day.
 - **Settings:** brain kind and model, recap hour, daily goal.
+
+## Modules: tabs that adapt to the user (v0.2)
+
+The UI is not generated. A **module** is a YAML file in `<home>/modules/`. It names its sources,
+schedule, view and actions, and the frontend draws it with one of a few hand-polished views.
+
+The beauty lives in those views, which are designed once. The YAML only combines them.
+
+```yaml
+name: Papers
+icon: book            # book | news | code | target | eye | play | pen | star
+view: feed            # feed (ranked list) | deck (swipe one at a time)
+every: daily 08:00    # 30m | 6h | 7d | daily HH:MM
+sources:
+  - {type: arxiv, query: "quantum circuit simulation, GPU"}
+interests: [gpu]      # boosts items from day one
+actions: [save, skip, summarize, todo, open]
+reasons: []           # deck only: quick skip reasons
+```
+
+- **Sources** (`modules/sources.py`): one function each, registered with `@source("name")`.
+  - `rss`, `arxiv`, `hn`, `github`: free official APIs.
+  - `exa`: agent-reach's login-free web search via mcporter.
+  - Jina Reader reads pages, for summaries.
+  - Never any login, cookie or scraping-hostile channel (LinkedIn, X, Reddit and so on).
+- **Ranking** (`modules/rank.py`): word log-odds learned from save/skip, plus the module's
+  declared interests. It's pure Python with no model to load, and it explains itself.
+- **Templates** (`modules/templates/*.yaml`): the gallery. `${param}` fields become the form in
+  the "new tab" dialog and in New Game.
+- **"Describe it"** (`modules/author.py`): one light-model call picks a template and fills its
+  params. The YAML is built and validated in code, so the model can't invent a source.
+- **Token policy:** fetching, ranking and rendering cost zero tokens. The brain is used only for
+  short text, and only on demand: tab authoring and tl;dr summaries (cached per item).
+  Both go through `light_model` (haiku).
+- **Compute policy:**
+  - At most 2 scheduler threads.
+  - Each module keeps its best `keep` unseen items. Pruned and old skipped items become tiny
+    "gone" rows, so they aren't fetched again, and are deleted after 90 days.
+
+Next views: `queue` (approve or redraft outgoing things), `board` (status columns), `stats`.
+Next sources: YouTube search via agent-reach's yt-dlp, Semantic Scholar, Product Hunt RSS, GitHub
+trending.
 
 ## Roadmap
 

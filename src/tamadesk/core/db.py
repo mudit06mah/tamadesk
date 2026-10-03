@@ -77,6 +77,44 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX events_at ON events(at);
     """,
+    # 2: modules: items from each tab's sources, the local taste model, last run per module
+    """
+    CREATE TABLE items (
+        id           INTEGER PRIMARY KEY,
+        module       TEXT NOT NULL,
+        ext_id       TEXT NOT NULL,
+        source       TEXT NOT NULL,
+        title        TEXT NOT NULL,
+        subtitle     TEXT,
+        body         TEXT,
+        url          TEXT,
+        data         TEXT,                  -- JSON: source extras, cached summary
+        score        REAL NOT NULL DEFAULT 0,
+        why          TEXT,                  -- JSON list of the words that ranked it up
+        status       TEXT NOT NULL DEFAULT 'new',  -- new|saved|skipped|done
+        reason       TEXT,
+        published_at TEXT,
+        created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+        decided_at   TEXT,
+        UNIQUE (module, ext_id)
+    );
+    CREATE INDEX items_module ON items(module, status, score);
+
+    CREATE TABLE terms (
+        module TEXT NOT NULL,
+        term   TEXT NOT NULL,
+        pos    INTEGER NOT NULL DEFAULT 0,
+        neg    INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (module, term)
+    );
+
+    CREATE TABLE module_runs (
+        module     TEXT PRIMARY KEY,
+        last_run   TEXT,
+        last_error TEXT,
+        added      INTEGER
+    );
+    """,
 ]
 
 

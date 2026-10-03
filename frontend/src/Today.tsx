@@ -1,10 +1,11 @@
 // Today: one capture box, your companion, and the day's todos, reminders, log and recap.
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, clock, when, type State, type Todo } from './api'
+import { api, clock, when, type ModItem, type State, type Todo } from './api'
 import { Companion, type Mood } from './Companion'
 import { useFx } from './fx/Fx'
 import { FlameIcon } from './icons'
+import { ItemCard, useItemActions } from './ItemCard'
 import { Bar, Seg, Win } from './ui'
 import type { Toast } from './util'
 
@@ -18,7 +19,7 @@ function guessKind(t: string): 'todo' | 'reminder' | 'log' | null {
   return 'log'
 }
 
-function line(s: State, name: string): { mood: Mood; text: string } {
+function line(s: State, name: string, picks: ModItem[]): { mood: Mood; text: string } {
   const h = new Date().getHours()
   const done = s.today.done.length
   const goal = s.day.todo_goal
@@ -28,6 +29,7 @@ function line(s: State, name: string): { mood: Mood; text: string } {
   if (h >= 23 || h < 5) return { mood: 'sleepy', text: 'It is very late… log one thing and rest?' }
   if (s.progress.streak_days >= 3) return { mood: 'happy', text: `${s.progress.streak_days}-day streak! Keep the chain going.` }
   if (done > 0) return { mood: 'idle', text: `${done}/${goal} today. ${goal - done} more and we celebrate.` }
+  if (picks.length) return { mood: 'happy', text: `I found ${picks.length} thing${picks.length > 1 ? 's' : ''} you might like. Have a look below!` }
   if (s.today.open.length) return { mood: 'idle', text: `Pick one small thing${who}. I'll cheer.` }
   if (h < 12) return { mood: 'idle', text: `Morning${who}! What's the plan today?` }
   return { mood: 'idle', text: `Hi${who}, I'm ${name}. Tell me what you're up to.` }
@@ -37,10 +39,12 @@ export function Today({
   state: s,
   refresh,
   notify,
+  go,
 }: {
   state: State
   refresh: () => Promise<void>
   notify: (t: string, k?: Toast['kind']) => void
+  go: (page: string) => void
 }) {
   const fx = useFx()
   const [text, setText] = useState('')
@@ -50,7 +54,15 @@ export function Today({
   const inputRef = useRef<HTMLInputElement>(null)
   const kind = guessKind(text)
   const companion = s.companion ?? { species: 'blob', name: 'buddy' }
-  const { mood, text: say } = useMemo(() => line(s, companion.name), [s, companion.name])
+  const [picks, setPicks] = useState<ModItem[]>([])
+  useEffect(() => {
+    void api.picks().then(setPicks)
+  }, [s])
+  const pickActs = useItemActions(notify, (it) => {
+    setPicks((ps) => ps.filter((p) => p.id !== it.id))
+    void refresh()
+  })
+  const { mood, text: say } = useMemo(() => line(s, companion.name, picks), [s, companion.name, picks])
 
   // "/" or "n" jumps to the capture box from anywhere on the page
   useEffect(() => {
@@ -203,6 +215,21 @@ export function Today({
             <Seg value={s.today.log.length} digits={2} />
           </div>
         </div>
+
+        {picks.length > 0 && (
+          <Win title="picks.txt" className="w-picks" right={<span className="muted small">best from your tabs</span>}>
+            <div className="picks">
+              {picks.map((it) => (
+                <div key={it.id} className="pick">
+                  <ItemCard it={it} mod={{ actions: ['save', 'skip', 'open'] }} run={pickActs.run} busy={pickActs.busy === it.id} compact />
+                  <button className="btn tiny ghost" onClick={() => go(`m:${it.module}`)}>
+                    more in {it.module_name} →
+                  </button>
+                </div>
+              ))}
+            </div>
+          </Win>
+        )}
 
         <Win title="todo.lst" className="w-todos" id="win-todos">
           {s.today.open.length === 0 && done === 0 ? (

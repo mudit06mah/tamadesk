@@ -12,6 +12,7 @@ XP = {
     "drafted": 5,
     "recap": 10,
     "new_game": 50,
+    "triaged": 1,  # saving or skipping an item in a module tab
 }
 
 

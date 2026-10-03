@@ -1644,3 +1644,337 @@ li:hover .icon-x,
     gap: 10px;
   }
 }
+
+/* ----------------------------------------------------------------- module tabs */
+.tile-add {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.75;
+}
+
+.tile-add:hover {
+  opacity: 1;
+}
+
+.mod-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seg-tabs {
+  display: flex;
+  padding: 3px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--win);
+}
+
+.seg-tabs button {
+  all: unset;
+  position: relative;
+  padding: 3px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  z-index: 0;
+}
+
+.seg-tab-on {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  z-index: -1;
+}
+
+.feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 820px;
+}
+
+.item {
+  padding: 14px 16px;
+  background: var(--win);
+  border: 2px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+
+.feed .item:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow);
+}
+
+.item-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.why {
+  font-size: 12px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--sage);
+  border: 1px solid var(--line);
+}
+
+.item-title {
+  display: block;
+  font-size: 17px;
+  line-height: 1.3;
+  color: var(--text);
+  text-decoration: none;
+}
+
+a.item-title:hover {
+  text-decoration: underline;
+}
+
+.item-sub {
+  margin-top: 2px;
+}
+
+.item-body,
+.item-sum p {
+  margin: 8px 0 0;
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.item-sum {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 4px solid var(--accent);
+  background: var(--field);
+  border-radius: 0 8px 8px 0;
+}
+
+.item-sum p:first-child {
+  margin-top: 0;
+}
+
+.item-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.item.compact .item-title {
+  font-size: 15px;
+}
+
+.act-save:hover {
+  background: var(--blush);
+}
+
+.act-skip:hover {
+  background: var(--win-2);
+}
+
+.act-summarize:hover {
+  background: var(--accent-soft);
+}
+
+/* the deck: one card on top of a little stack, drag to decide */
+.deck {
+  max-width: 620px;
+  margin: 10px auto 0;
+}
+
+.deck-stack {
+  position: relative;
+  min-height: 260px;
+}
+
+.deck-under {
+  position: absolute;
+  inset: 0;
+  background: var(--win-2);
+  border: 2px solid var(--line);
+  border-radius: var(--r);
+}
+
+.deck-top {
+  position: relative;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.deck-top .item {
+  min-height: 260px;
+  box-shadow: var(--shadow);
+}
+
+.deck-stamp {
+  position: absolute;
+  top: 18px;
+  z-index: 2;
+  padding: 2px 12px;
+  border: 3px solid currentColor;
+  border-radius: 8px;
+  font-size: 26px;
+  letter-spacing: 3px;
+  pointer-events: none;
+}
+
+.deck-stamp.keep {
+  right: 18px;
+  color: var(--good);
+  transform: rotate(10deg);
+}
+
+.deck-stamp.nope {
+  left: 18px;
+  color: var(--bad);
+  transform: rotate(-10deg);
+}
+
+.deck-buttons {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.reasons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* template gallery (new tab + New Game) */
+.tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.tpl {
+  border: 2px solid var(--line);
+  border-radius: var(--r);
+  background: var(--win-2);
+  overflow: hidden;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.tpl.on {
+  background: var(--accent-soft);
+  box-shadow: var(--shadow-sm);
+}
+
+.tpl-head {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.tpl-head > span:nth-child(2) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tpl-head b {
+  font-weight: 400;
+  font-size: 16px;
+}
+
+.tpl-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--win);
+}
+
+.tpl-check {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: var(--win);
+  flex-shrink: 0;
+}
+
+.tpl.on .tpl-check {
+  background: var(--accent);
+  color: var(--inverse-fg);
+}
+
+.tpl-params {
+  padding: 0 12px 12px;
+}
+
+.tpl-params .field {
+  margin-top: 8px;
+}
+
+.yaml {
+  min-height: 300px;
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  tab-size: 2;
+}
+
+/* Today: picks from your tabs */
+.w-picks {
+  grid-column: span 12;
+}
+
+.picks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.pick .item {
+  width: 100%;
+}
+
+.empty-win {
+  max-width: 620px;
+}
+
+.undo-line {
+  text-align: center;
+  margin: 14px 0 0;
+}
+
+.skip-btn:hover {
+  background: color-mix(in srgb, var(--coral) 30%, var(--win));
+}

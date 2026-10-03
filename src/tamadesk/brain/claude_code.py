@@ -34,12 +34,13 @@ class ClaudeCodeBrain:
             return False, "Claude Code is installed but not logged in. Run `claude` once to log in."
         return True, f"Claude Code, logged in ({info.get('authMethod', 'unknown')})"
 
-    def ask(self, prompt: str, schema: dict, *, system: str = "") -> dict:
+    def ask(self, prompt: str, schema: dict, *, system: str = "", light: bool = False) -> dict:
+        """`light` = short text (summaries, picking a template): runs on the cheapest model."""
         cmd = [
             "claude", "-p", prompt,
             "--output-format", "json",
             "--json-schema", json.dumps(schema),
-            "--model", self.s.brain.model,
+            "--model", self.s.brain.light_model if light else self.s.brain.model,
             "--tools", "",  # text in, JSON out: the brain never needs to touch files or the shell
             "--permission-mode", "dontAsk",
             "--no-session-persistence",

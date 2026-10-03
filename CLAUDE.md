@@ -23,5 +23,9 @@ An open-source (MIT) desk companion: daily log, todos, reminders, drafting in th
 - **Schema changes:** append to `MIGRATIONS` in `core/db.py`. Never edit an applied migration.
 - **XP only for real progress.** Every XP change is an `events` row, and undo must reverse it.
 - **Nothing is sent anywhere** (mail, network) without an explicit user click.
+- **Sources:** only free, login-free channels: official public APIs, RSS/Atom, and agent-reach's login-free channels (Exa via mcporter, Jina Reader). Never cookie/login channels (LinkedIn, X, Reddit, Instagram) or scraping-hostile sites.
+- **Tokens and compute:** fetching, ranking and rendering cost zero tokens. Brain calls are short text only, on demand, using `light=True` (haiku) unless the user is drafting. Keep jobs on the 2-thread scheduler and prune data.
+- **Modules, not custom pages:** a new kind of tab is a template YAML plus, if needed, one `@source` function. New views are rare and must work for any module.
+- **DRY:** one HTTP helper (`core/net.py`), one item card plus action hook (`ItemCard.tsx`), and one template card for the gallery and New Game.
 - **Motion and sound:** follow the tables in `docs/plan.md`. Respect reduced motion and the mute toggle.
 - **Style:** match the surrounding code, keep it small and typed, and add tests for state logic.

@@ -1,0 +1,13 @@
+title: GitHub radar
+blurb: Rising open-source repos in your area. Great for finding projects to contribute to.
+icon: code
+params:
+  topics: {label: "GitHub search (e.g. topic:kubernetes language:go)", default: "topic:devtools"}
+module:
+  name: Repos
+  icon: code
+  view: feed
+  every: daily 09:00
+  sources:
+    - {type: github, query: "${topics}", days: 30}
+  actions: [save, skip, todo, open]

@@ -7,6 +7,7 @@ import { api, type CompanionChoice, type Question } from './api'
 import { Companion } from './Companion'
 import { useFx } from './fx/Fx'
 import { play } from './fx/sound'
+import { TemplateCard, usePicks, useTemplates } from './Templates'
 import { Win } from './ui'
 
 function Typewriter({ text, onDone }: { text: string; onDone?: () => void }) {
@@ -40,7 +41,7 @@ function Typewriter({ text, onDone }: { text: string; onDone?: () => void }) {
   )
 }
 
-type Step = { k: 'title' } | { k: 'q'; i: number } | { k: 'pick' } | { k: 'samples' } | { k: 'brain' }
+type Step = { k: 'title' } | { k: 'q'; i: number } | { k: 'pick' } | { k: 'watch' } | { k: 'samples' } | { k: 'brain' }
 
 export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boolean }) {
   const fx = useFx()
@@ -56,6 +57,8 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
   const [samples, setSamples] = useState(0)
   const [brain, setBrain] = useState<{ ok: boolean; name: string; detail: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const templates = useTemplates()
+  const watch = usePicks(true)
   const [err, setErr] = useState('')
 
   useEffect(() => {
@@ -92,14 +95,16 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
     play('tap')
     setTyped(false)
     if (step.k === 'q') setStep(step.i + 1 < questions.length ? { k: 'q', i: step.i + 1 } : { k: 'pick' })
-    else if (step.k === 'pick') setStep({ k: 'samples' })
+    else if (step.k === 'pick') setStep({ k: 'watch' })
+    else if (step.k === 'watch') setStep({ k: 'samples' })
     else if (step.k === 'samples') setStep({ k: 'brain' })
   }
   const back = () => {
     play('tap')
     if (step.k === 'q' && step.i > 0) setStep({ k: 'q', i: step.i - 1 })
     else if (step.k === 'pick') setStep({ k: 'q', i: questions.length - 1 })
-    else if (step.k === 'samples') setStep({ k: 'pick' })
+    else if (step.k === 'watch') setStep({ k: 'pick' })
+    else if (step.k === 'samples') setStep({ k: 'watch' })
     else if (step.k === 'brain') setStep({ k: 'samples' })
   }
 
@@ -107,7 +112,7 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
     if (!species) return
     setBusy(true)
     try {
-      await api.newGame(about, { species, name: name.trim() || 'buddy' })
+      await api.newGame(about, { species, name: name.trim() || 'buddy' }, watch.picks)
       play('start')
       fx.banner({ kind: 'goal', title: replay ? 'SAVED!' : 'GAME START!', sub: `${name || 'Your companion'} moved onto your desk. Let's get things done.` })
       onReady()
@@ -130,8 +135,8 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
     }
   }
 
-  const total = questions.length + 3
-  const at = step.k === 'q' ? step.i : step.k === 'pick' ? questions.length : step.k === 'samples' ? questions.length + 1 : questions.length + 2
+  const total = questions.length + 4
+  const at = step.k === 'q' ? step.i : questions.length + ['pick', 'watch', 'samples', 'brain'].indexOf(step.k)
 
   if (step.k === 'title') {
     return (
@@ -257,6 +262,37 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
                 <span />
                 <button className="btn solid" disabled={!species || !name.trim()} onClick={next}>
                   That's the one →
+                </button>
+              </div>
+            </Win>
+          )}
+
+          {step.k === 'watch' && (
+            <Win title="your_tabs.exe" className="ng-win wide">
+              <h2 className="ng-q">What should {name || 'I'} keep an eye on for you?</h2>
+              <p className="muted">Each one becomes a tab. Pick any (or none), fill in your topics, and add more anytime with "New tab".</p>
+              <div className="tpl-grid">
+                {templates.map((t) => (
+                  <TemplateCard
+                    key={t.key}
+                    t={t}
+                    on={!!watch.of(t.key)}
+                    params={watch.of(t.key)?.params ?? {}}
+                    onToggle={() => {
+                      play('tap')
+                      watch.toggle(t.key)
+                    }}
+                    onParam={(k, v) => watch.setParam(t.key, k, v)}
+                  />
+                ))}
+              </div>
+              <div className="ng-actions">
+                <button className="btn ghost" onClick={back}>
+                  ← back
+                </button>
+                <span className="muted small">{watch.picks.length} tab{watch.picks.length === 1 ? '' : 's'}</span>
+                <button className="btn solid" onClick={next}>
+                  {watch.picks.length ? 'Next →' : 'Skip for now →'}
                 </button>
               </div>
             </Win>

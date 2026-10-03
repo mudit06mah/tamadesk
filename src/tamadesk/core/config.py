@@ -32,6 +32,7 @@ class ServerCfg(BaseModel):
 class BrainCfg(BaseModel):
     kind: BrainKind = "claude_code"
     model: str = "sonnet"  # claude_code: sonnet|opus|haiku; ollama: any pulled model
+    light_model: str = "haiku"  # claude_code only: summaries and other tiny text jobs
     ollama_url: str = "http://127.0.0.1:11434"
     timeout_s: int = 180
 

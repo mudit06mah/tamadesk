@@ -1,0 +1,14 @@
+title: Lead finder
+blurb: Finds companies or people who might need what you offer, from a web search. Swipe to keep.
+icon: target
+params:
+  who: {label: "Who are you looking for?", default: "small e-commerce brands in Europe that run Instagram ads"}
+module:
+  name: Leads
+  icon: target
+  view: deck
+  every: 7d
+  sources:
+    - {type: exa, query: "category:company ${who}", limit: 15, objective: "company homepages, not lists or articles"}
+  actions: [save, skip, todo, open]
+  reasons: [not a fit, too big, no contact info, already know them]

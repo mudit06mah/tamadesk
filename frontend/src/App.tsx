@@ -1,21 +1,24 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, when, type State } from './api'
+import { api, when, type Mod, type State } from './api'
 import { Companion, CompanionCtx } from './Companion'
 import { FxProvider, useFx } from './fx/Fx'
 import { play, setSound, soundOn } from './fx/sound'
-import { BookIcon, GearIcon, HomeIcon, MoonIcon, PenIcon, SunIcon } from './icons'
+import { BookIcon, GearIcon, HomeIcon, ModIcon, MoonIcon, PenIcon, PlusIcon, SunIcon } from './icons'
 import { Journal } from './Journal'
+import { ModulePage } from './ModulePage'
 import { NewGame } from './NewGame'
 import { Settings } from './Settings'
+import { NewTabDialog } from './Templates'
 import { Today } from './Today'
 import { Dialog } from './ui'
 import { isTyping, type Toast } from './util'
 import { Write } from './Write'
 
-export type Page = 'today' | 'journal' | 'write' | 'settings'
+// fixed pages, plus one `m:<id>` page per module tab (between Today and Journal)
+export type Page = string
 type Theme = 'paper' | 'phosphor'
-const PAGES: Page[] = ['today', 'journal', 'write', 'settings']
+const pagesFor = (mods: Mod[]): Page[] => ['today', ...mods.map((m) => `m:${m.id}`), 'journal', 'write', 'settings']
 
 function initialTheme(): Theme {
   const q = new URLSearchParams(location.search).get('theme')
@@ -60,10 +63,10 @@ export default function App() {
 
 function Shell({ state, setState }: { state: State | null; setState: (s: State) => void }) {
   const fx = useFx()
-  const [page, setPage] = useState<Page>(() => {
-    const h = location.hash.slice(1)
-    return (PAGES as string[]).includes(h) ? (h as Page) : 'today'
-  })
+  const [page, setPage] = useState<Page>(() => location.hash.slice(1) || 'today')
+  const [mods, setMods] = useState<Mod[]>([])
+  const [newTab, setNewTab] = useState(false)
+  const pages = pagesFor(mods)
   const [theme, setTheme] = useState<Theme>(initialTheme)
   const [sound, setSoundState] = useState(soundOn())
   const [offline, setOffline] = useState(false)
@@ -77,10 +80,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   }, [page])
 
   useEffect(() => {
-    const onHash = () => {
-      const h = location.hash.slice(1)
-      setPage((PAGES as string[]).includes(h) ? (h as Page) : 'today')
-    }
+    const onHash = () => setPage(location.hash.slice(1) || 'today')
     window.addEventListener('popstate', onHash)
     return () => window.removeEventListener('popstate', onHash)
   }, [])
@@ -96,8 +96,9 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
 
   const refresh = useCallback(async () => {
     try {
-      const s = await api.state()
+      const [s, m] = await Promise.all([api.state(), api.modules()])
       setState(s)
+      setMods(m)
       setOffline(false)
       const lastLevel = remembered('seen-level')
       if (lastLevel !== null && s.progress.level > lastLevel) {
@@ -138,11 +139,11 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return
       const n = Number(e.key)
-      if (n >= 1 && n <= PAGES.length) go(PAGES[n - 1])
+      if (n >= 1 && n <= Math.min(9, pages.length)) go(pages[n - 1])
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [go])
+  }, [go, pages])
 
   if (!state) {
     return <p className="loading">{offline ? 'tamadesk backend is offline. Run `uv run tamadesk serve`.' : 'booting tamadesk…'}</p>
@@ -162,8 +163,10 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
 
   const ringing = state.reminders.filter((r) => r.status === 'fired')
   const name = state.companion?.name ?? 'buddy'
+  const mod = page.startsWith('m:') ? mods.find((m) => `m:${m.id}` === page) : undefined
   const tiles: { id: Page; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'today', label: 'Today', icon: <HomeIcon />, count: state.today.open.length },
+    ...mods.map((m) => ({ id: `m:${m.id}`, label: m.name, icon: <ModIcon name={m.icon} />, count: m.new })),
     { id: 'journal', label: 'Journal', icon: <BookIcon /> },
     { id: 'write', label: 'Write', icon: <PenIcon /> },
     { id: 'settings', label: 'Settings', icon: <GearIcon /> },
@@ -177,20 +180,35 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
             <Companion size={34} />
           </span>
           <span className="logo-text">
-            TAMADESK<small>v0.1 · {name}</small>
+            TAMADESK<small>v0.2 · {name}</small>
           </span>
         </div>
 
         <nav className="tiles">
           {tiles.map((t, i) => (
-            <button key={t.id} id={`dock-${t.id}`} className={`tile ${page === t.id ? 'on' : ''}`} onClick={() => go(t.id)}>
+            <motion.button
+              layout
+              key={t.id}
+              id={`dock-${t.id}`}
+              className={`tile ${page === t.id ? 'on' : ''}`}
+              onClick={() => go(t.id)}
+              initial={{ scale: 0.3, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 18 }}
+            >
               <span className="tile-icon">{t.icon}</span>
               <span className="tile-label">{t.label}</span>
               {!!t.count && <span className="tile-count">{t.count}</span>}
-              <kbd className="tile-key">{i + 1}</kbd>
+              {i < 9 && <kbd className="tile-key">{i + 1}</kbd>}
               {page === t.id && <motion.span layoutId="tile-on" className="tile-glow" />}
-            </button>
+            </motion.button>
           ))}
+          <motion.button layout className="tile tile-add" onClick={() => setNewTab(true)} whileTap={{ scale: 0.9 }} title="Add a tab">
+            <span className="tile-icon">
+              <PlusIcon />
+            </span>
+            <span className="tile-label">New tab</span>
+          </motion.button>
         </nav>
 
         <div className="dock-foot">
@@ -220,13 +238,24 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
       <main className="screen">
         <AnimatePresence mode="wait">
           <motion.div key={page} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
-            {page === 'today' && <Today state={state} refresh={refresh} notify={notify} />}
+            {(page === 'today' || (page.startsWith('m:') && !mod)) && <Today state={state} refresh={refresh} notify={notify} go={go} />}
+            {mod && <ModulePage key={mod.id} mod={mod} notify={notify} onChange={refresh} onDeleted={() => (go('today'), void refresh())} />}
             {page === 'journal' && <Journal />}
             {page === 'write' && <Write notify={notify} />}
             {page === 'settings' && <Settings state={state} refresh={refresh} notify={notify} replay={() => setReplay(true)} />}
           </motion.div>
         </AnimatePresence>
       </main>
+
+      <NewTabDialog
+        open={newTab}
+        onClose={() => setNewTab(false)}
+        notify={notify}
+        onCreated={(m) => {
+          setNewTab(false)
+          void refresh().then(() => setPage(`m:${m.id}`))
+        }}
+      />
 
       <Dialog open={ringing.length > 0} title="alarm.clk" onClose={() => undefined}>
         <div className="ring">

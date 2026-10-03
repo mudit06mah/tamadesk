@@ -1,0 +1,14 @@
+title: Research papers
+blurb: Fresh arXiv papers on your topics every morning. Free, no tokens.
+icon: book
+params:
+  topics: {label: "Topics (comma separated)", default: "large language models"}
+module:
+  name: Papers
+  icon: book
+  view: feed
+  every: daily 08:00
+  sources:
+    - {type: arxiv, query: "${topics}"}
+  interests: ["${topics}"]
+  actions: [save, skip, summarize, open]

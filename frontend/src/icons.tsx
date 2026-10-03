@@ -22,3 +22,30 @@ export const MoonIcon = () => (
 export const FlameIcon = () => (
   <svg {...base} aria-hidden><path d="M12 3c1 4 5 5 5 10a5 5 0 01-10 0c0-3 2-4 2-7 1 1 2 2 3 3 0-2 0-4 0-6z" /></svg>
 )
+export const NewsIcon = () => (
+  <svg {...base} aria-hidden><rect x="3" y="5" width="15" height="15" rx="1" /><path d="M18 9h3v9a2 2 0 01-2 2M7 9h7M7 13h7M7 17h4" /></svg>
+)
+export const CodeIcon = () => (
+  <svg {...base} aria-hidden><path d="M8 7l-5 5 5 5M16 7l5 5-5 5" /></svg>
+)
+export const TargetIcon = () => (
+  <svg {...base} aria-hidden><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r="1" /></svg>
+)
+export const EyeIcon = () => (
+  <svg {...base} aria-hidden><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
+)
+export const PlayIcon = () => (
+  <svg {...base} aria-hidden><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M10 9l5 3-5 3z" /></svg>
+)
+export const StarIcon = () => (
+  <svg {...base} aria-hidden><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z" /></svg>
+)
+export const PlusIcon = () => (
+  <svg {...base} aria-hidden><path d="M12 5v14M5 12h14" /></svg>
+)
+
+/** Module YAML names an icon by word; unknown words fall back to a star. */
+const BY_NAME: Record<string, () => React.JSX.Element> = {
+  book: BookIcon, news: NewsIcon, code: CodeIcon, target: TargetIcon, eye: EyeIcon, play: PlayIcon, star: StarIcon, pen: PenIcon,
+}
+export const ModIcon = ({ name }: { name: string }) => (BY_NAME[name] ?? StarIcon)()

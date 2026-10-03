@@ -13,6 +13,18 @@ The writing is done by **your own** Claude Code (or a local model via Ollama).
 
 ## What it does
 
+- **Tabs that fit you**: tell your companion what to keep an eye on and a tab hatches for it.
+  - A morning feed of research papers.
+  - Tech news on your topics.
+  - Rising GitHub repos.
+  - New uploads from YouTube channels.
+  - A web watch for anything you describe.
+  - A swipe deck of leads: companies that might need what you sell.
+
+  Every tab is a small YAML file. Pick one from the gallery (no AI needed) or describe it in a
+  sentence. Saving and skipping teaches a tiny local ranker your taste, so the best items float up,
+  and they show up on Today as picks.
+
 - **Quick capture**: one box for everything.
   - `bought groceries, finally fixed the bug` goes to your daily log.
   - `todo send the invoice` adds a todo.
@@ -36,6 +48,21 @@ cd frontend && npm install && npm run build && cd ..
 uv run tamadesk doctor     # checks your brain (Claude Code or Ollama)
 uv run tamadesk serve      # then open http://127.0.0.1:6206
 ```
+
+### Free data sources
+
+Every tab pulls from free, login-free sources:
+
+- **arXiv**, **Hacker News** (Algolia) and **GitHub search**, through their public APIs.
+- **Any RSS/Atom feed**: blogs, news sites, YouTube channels.
+- **Web search**, through [agent-reach](https://github.com/Panniantong/agent-reach)'s login-free
+  channels: Exa search via `mcporter`, and Jina Reader to read pages for summaries. Install it with
+  `pipx install agent-reach && agent-reach install`. Only the Leads and Web watch tabs need it.
+
+Fetching, ranking and storage all run on your machine. The fetch jobs use at most two threads,
+and old items are pruned, so tamadesk stays small. The brain only writes short text: picking a
+template for "describe it", and a summary when you press tl;dr. Both run on the cheapest model
+(haiku).
 
 ### Pick a brain
 

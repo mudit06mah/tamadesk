@@ -33,6 +33,12 @@ def doctor() -> None:
     conn.close()
     ok, detail = get_brain(s).check()
     typer.echo(f"{'ok ' if ok else 'FAIL'}  brain     {detail}")
+    from tamadesk.modules import sources, spec
+
+    reach = sources.agent_reach_ready()
+    typer.echo(f"{'ok ' if reach else 'warn'}  web       " + ("agent-reach (Exa search) ready" if reach else
+               "agent-reach not found: web search tabs (Leads, Web watch) need `pipx install agent-reach`"))  # fmt: skip
+    typer.echo(f"ok    tabs      {len(spec.load_all(s))} module(s) in {spec.module_dir(s)}")
     typer.echo(f"ok    data      {s.home}")
     typer.echo(f"ok    database  schema v{version}")
     raise typer.Exit(0 if ok else 1)

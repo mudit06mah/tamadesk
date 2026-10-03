@@ -11,6 +11,37 @@ export type Draft = { id: number; ask: string; subject: string; body: string; cr
 export type Question = { key: string; q: string; hint: string }
 export type CompanionChoice = { species: string; label: string; blurb: string }
 
+export type Mod = {
+  id: string
+  name: string
+  icon: string
+  view: 'feed' | 'deck'
+  every: string
+  sources: ({ type: string } & Record<string, unknown>)[]
+  interests: string[]
+  actions: ('save' | 'skip' | 'open' | 'summarize' | 'todo' | 'done')[]
+  reasons: string[]
+  new: number
+  saved: number
+  run: { last_run: string | null; last_error: string | null; added: number | null } | null
+}
+export type Template = { key: string; title: string; blurb: string; icon: string; params: Record<string, { label: string; default?: string }> }
+export type ModItem = {
+  id: number
+  module: string
+  module_name?: string
+  source: string
+  title: string
+  subtitle: string | null
+  body: string | null
+  url: string | null
+  score: number
+  why: string[]
+  status: string
+  published_at: string | null
+  data: { summary?: { summary: string; why_you: string }; discussion?: string; topics?: string[] }
+}
+
 export type Progress = {
   xp: number
   level: number
@@ -56,8 +87,21 @@ export const api = {
   state: () => call<State>('/state'),
   activity: (offset: number) => call<{ items: Activity[]; has_more: boolean }>(`/activity?offset=${offset}`),
   onboarding: () => call<{ questions: Question[]; companions: CompanionChoice[] }>('/onboarding'),
-  newGame: (about: Record<string, string>, companion: { species: string; name: string }) =>
-    post<{ ok: boolean }>('/onboarding', { about, companion }),
+  newGame: (about: Record<string, string>, companion: { species: string; name: string }, modules: { template: string; params: Record<string, string> }[] = []) =>
+    post<{ ok: boolean }>('/onboarding', { about, companion, modules }),
+  modules: () => call<Mod[]>('/modules'),
+  templates: () => call<Template[]>('/templates'),
+  createModule: (template: string, params: Record<string, string>) => post<Mod>('/modules', { template, params }),
+  askModule: (wish: string) => post<Mod>('/modules/ask', { wish }),
+  moduleYaml: (id: string) => call<{ yaml: string }>(`/modules/${id}/yaml`),
+  saveModuleYaml: (id: string, yaml: string) => call<Mod>(`/modules/${id}`, { method: 'PUT', body: JSON.stringify({ yaml }) }),
+  deleteModule: (id: string) => call(`/modules/${id}`, { method: 'DELETE' }),
+  runModule: (id: string) => post(`/modules/${id}/run`),
+  items: (id: string, status: string, offset = 0) => call<{ items: ModItem[]; has_more: boolean }>(`/modules/${id}/items?status=${status}&offset=${offset}`),
+  picks: () => call<ModItem[]>('/picks'),
+  act: (itemId: number, action: 'save' | 'skip' | 'done' | 'undo', reason = '') => post<{ status: string; xp: number }>(`/items/${itemId}/${action}`, { reason }),
+  itemTodo: (itemId: number) => post<{ todo_id: number }>(`/items/${itemId}/todo`),
+  summarize: (itemId: number) => post<{ summary: string; why_you: string }>(`/items/${itemId}/summarize`),
   capture: (text: string) =>
     post<{ kind: 'todo' | 'reminder' | 'log'; id: number; text: string; due_at: string | null; xp: number }>('/capture', { text }),
   todo: (id: number, action: 'done' | 'undo' | 'drop') => post<{ ok: boolean; xp: number }>(`/todos/${id}/${action}`),
