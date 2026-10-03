@@ -1,4 +1,4 @@
-// Typed client for the tamadesk backend (/api, proxied to :7778 in dev).
+// Typed client for the tamadesk backend (/api, proxied to :6206 in dev).
 
 export type Todo = { id: number; title: string; due_at: string | null; status: string; done_at: string | null; created_at: string }
 export type LogEntry = { id: number; body: string; mood: number | null; created_at: string }

@@ -12,10 +12,10 @@ An open-source (MIT) desk companion: daily log, todos, reminders, drafting in th
 - User data lives in `~/.local/share/tamadesk` (or `TAMADESK_HOME`), never in the repo.
 
 ## Commands
-- `uv run tamadesk serve [--reload]`: runs on 127.0.0.1:7778
+- `uv run tamadesk serve [--reload]`: runs on 127.0.0.1:6206
 - `uv run tamadesk doctor`
 - `uv run pytest`, `uv run ruff check .`
-- `cd frontend && npm run dev` (proxies /api to 7778), `npm run build`, `npx oxlint src`
+- `cd frontend && npm run dev` (proxies /api to 6206), `npm run build`, `npx oxlint src`
 
 ## Rules
 - **Public repo: no personal data.** No real names, emails, resumes, profile files or sample writing from any real person in code, tests, fixtures or docs.

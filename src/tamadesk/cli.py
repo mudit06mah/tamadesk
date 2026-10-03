@@ -14,7 +14,7 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 
 @app.command()
 def serve(reload: bool = typer.Option(False, help="auto-reload on code changes (dev)")) -> None:
-    """Run the desk (API + UI + reminders) on 127.0.0.1:7778."""
+    """Run the desk (API + UI + reminders) on 127.0.0.1:6206."""
     import uvicorn
 
     s = get_settings()

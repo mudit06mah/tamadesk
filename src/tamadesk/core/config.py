@@ -26,7 +26,7 @@ def home_dir() -> Path:
 
 class ServerCfg(BaseModel):
     host: str = "127.0.0.1"
-    port: int = 7778
+    port: int = 6206
 
 
 class BrainCfg(BaseModel):

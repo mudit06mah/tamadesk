@@ -30,11 +30,11 @@ You need Python 3.12+, [uv](https://docs.astral.sh/uv/) and Node 20+ (Node is on
 build the UI).
 
 ```sh
-git clone https://github.com/<you>/tamadesk && cd tamadesk
+git clone https://github.com/mudit06mah/tamadesk && cd tamadesk
 uv sync
 cd frontend && npm install && npm run build && cd ..
 uv run tamadesk doctor     # checks your brain (Claude Code or Ollama)
-uv run tamadesk serve      # then open http://127.0.0.1:7778
+uv run tamadesk serve      # then open http://127.0.0.1:6206
 ```
 
 ### Pick a brain
@@ -65,8 +65,8 @@ it to start a new game. Set `TAMADESK_HOME` to put it somewhere else.
 ## Develop
 
 ```sh
-uv run tamadesk serve --reload        # API on :7778
-cd frontend && npm run dev            # UI with hot reload, proxies /api to :7778
+uv run tamadesk serve --reload        # API on :6206
+cd frontend && npm run dev            # UI with hot reload, proxies /api to :6206
 uv run pytest && uv run ruff check .
 ```
 
