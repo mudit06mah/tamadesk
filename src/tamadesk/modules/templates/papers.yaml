@@ -2,7 +2,7 @@ title: Research papers
 blurb: Fresh arXiv papers on your topics every morning. Free, no tokens.
 icon: book
 params:
-  topics: {label: "Topics (comma separated)", default: "large language models"}
+  topics: {label: "Topics (comma separated)", default: "large language models", from: interests}
 module:
   name: Papers
   icon: book

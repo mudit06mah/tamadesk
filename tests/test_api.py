@@ -80,3 +80,12 @@ def test_clean_strips_dashes():
 
     assert clean("fixed it — finally") == "fixed it, finally"
     assert clean("a–b") == "a, b"
+
+
+def test_set_one_about_field_keeps_the_rest(client):
+    client.post(
+        "/api/onboarding", json={"about": {"name": "Sam"}, "companion": {"species": "blob", "name": "B"}}
+    )
+    about = client.post("/api/about", json={"key": "interests", "value": " devops, games "}).json()
+    assert about == {"name": "Sam", "interests": "devops, games"}
+    assert client.post("/api/about", json={"key": "Bad Key!", "value": "x"}).status_code == 422

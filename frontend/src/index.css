@@ -883,6 +883,18 @@ kbd {
 
 .dialog {
   width: min(540px, 100%);
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog.wide {
+  width: min(880px, 100%);
+}
+
+.dialog > .win-body {
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .dialog-x {
@@ -1861,8 +1873,8 @@ a.item-title:hover {
 /* template gallery (new tab + New Game) */
 .tpl-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
   align-items: start;
 }
 
@@ -1886,8 +1898,17 @@ a.item-title:hover {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px;
+  padding: 10px;
   cursor: pointer;
+}
+
+.tpl-head .muted.small {
+  font-size: 12px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .tpl-head > span:nth-child(2) {
@@ -1905,8 +1926,8 @@ a.item-title:hover {
 .tpl-icon {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   border: 2px solid var(--line);
   border-radius: 8px;

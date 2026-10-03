@@ -125,6 +125,19 @@ def new_game(body: NewGame, conn: Conn) -> dict:
     return {"ok": True, "modules": install_templates(body.modules)}
 
 
+class AboutField(BaseModel):
+    key: str = Field(pattern=r"^[a-z_]{1,24}$")
+    value: str = Field(max_length=1000)
+
+
+@router.post("/about")
+def set_about(f: AboutField, conn: Conn) -> dict:
+    """Update one answer (e.g. interests) without replaying New Game."""
+    about = db.get_profile(conn, "about", {}) | {f.key: f.value.strip()}
+    db.set_profile(conn, "about", about)
+    return about
+
+
 # ---------------------------------------------------------------- capture, todos, reminders
 
 

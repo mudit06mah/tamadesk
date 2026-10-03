@@ -106,11 +106,13 @@ export function Dialog({
   title,
   onClose,
   children,
+  wide,
 }: {
   open: boolean
   title: string
   onClose: () => void
   children: ReactNode
+  wide?: boolean
 }) {
   const reduce = useReducedMotion()
   const boxRef = useRef<HTMLDivElement>(null)
@@ -163,7 +165,7 @@ export function Dialog({
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className="win dialog"
+            className={`win dialog ${wide ? 'wide' : ''}`}
             initial={reduce ? { opacity: 0 } : { scale: 0.85, y: 24, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={reduce ? { opacity: 0 } : { scale: 0.9, y: 12, opacity: 0 }}

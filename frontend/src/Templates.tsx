@@ -60,21 +60,40 @@ export function TemplateCard({
   )
 }
 
-/** Selection state for one or many template cards. */
-export function usePicks(multi: boolean) {
+/** Selection state for one or many template cards. Topic fields start from the user's interests. */
+export function usePicks(multi: boolean, interests = '') {
   const [picks, setPicks] = useState<Pick[]>([])
-  const toggle = (key: string) =>
-    setPicks((ps) => (ps.some((p) => p.template === key) ? ps.filter((p) => p.template !== key) : [...(multi ? ps : []), { template: key, params: {} }]))
+  const seed = (t: Template) =>
+    Object.fromEntries(Object.entries(t.params).flatMap(([k, p]) => (p.from === 'interests' && interests.trim() ? [[k, interests.trim()]] : [])))
+  const toggle = (t: Template) =>
+    setPicks((ps) => (ps.some((p) => p.template === t.key) ? ps.filter((p) => p.template !== t.key) : [...(multi ? ps : []), { template: t.key, params: seed(t) }]))
   const setParam = (key: string, k: string, v: string) =>
     setPicks((ps) => ps.map((p) => (p.template === key ? { ...p, params: { ...p.params, [k]: v } } : p)))
   return { picks, toggle, setParam, of: (key: string) => picks.find((p) => p.template === key) }
 }
 
-export function NewTabDialog({ open, onClose, onCreated, notify }: { open: boolean; onClose: () => void; onCreated: (m: Mod) => void; notify: (t: string, k?: Toast['kind']) => void }) {
+export function NewTabDialog({
+  open,
+  onClose,
+  onCreated,
+  notify,
+  interests: saved,
+}: {
+  open: boolean
+  onClose: () => void
+  onCreated: (m: Mod) => void
+  notify: (t: string, k?: Toast['kind']) => void
+  interests: string
+}) {
   const fx = useFx()
   const buddy = useCompanion()
   const ts = useTemplates()
-  const { picks, toggle, setParam, of } = usePicks(false)
+  const [interests, setInterests] = useState(saved)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- start from the saved answer each time
+    if (open) setInterests(saved)
+  }, [open, saved])
+  const { picks, toggle, setParam, of } = usePicks(false, interests)
   const [wish, setWish] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -88,6 +107,7 @@ export function NewTabDialog({ open, onClose, onCreated, notify }: { open: boole
   const create = async () => {
     setBusy(true)
     try {
+      if (interests.trim() !== saved.trim()) await api.setAbout('interests', interests)
       done(wish.trim() ? await api.askModule(wish) : await api.createModule(picks[0].template, picks[0].params))
     } catch (e) {
       notify((e as Error).message, 'err')
@@ -97,12 +117,16 @@ export function NewTabDialog({ open, onClose, onCreated, notify }: { open: boole
   }
 
   return (
-    <Dialog open={open} title="new_tab.exe" onClose={onClose}>
+    <Dialog open={open} title="new_tab.exe" onClose={onClose} wide>
       <div className="dialog-form">
         <p className="dialog-lead">What should {buddy.name} keep an eye on for you?</p>
+        <label className="field">
+          <span>your interests ({buddy.name} fills topics from these)</span>
+          <input value={interests} onChange={(e) => setInterests(e.target.value)} placeholder="devops, quantum computing, game design…" />
+        </label>
         <div className="tpl-grid">
           {ts.map((t) => (
-            <TemplateCard key={t.key} t={t} on={!!of(t.key)} params={of(t.key)?.params ?? {}} onToggle={() => (setWish(''), toggle(t.key))} onParam={(k, v) => setParam(t.key, k, v)} />
+            <TemplateCard key={t.key} t={t} on={!!of(t.key)} params={of(t.key)?.params ?? {}} onToggle={() => (setWish(''), toggle(t))} onParam={(k, v) => setParam(t.key, k, v)} />
           ))}
         </div>
         <label className="field">

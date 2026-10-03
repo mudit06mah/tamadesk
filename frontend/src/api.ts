@@ -25,7 +25,7 @@ export type Mod = {
   saved: number
   run: { last_run: string | null; last_error: string | null; added: number | null } | null
 }
-export type Template = { key: string; title: string; blurb: string; icon: string; params: Record<string, { label: string; default?: string }> }
+export type Template = { key: string; title: string; blurb: string; icon: string; params: Record<string, { label: string; default?: string; from?: 'interests' }> }
 export type ModItem = {
   id: number
   module: string
@@ -89,6 +89,7 @@ export const api = {
   onboarding: () => call<{ questions: Question[]; companions: CompanionChoice[] }>('/onboarding'),
   newGame: (about: Record<string, string>, companion: { species: string; name: string }, modules: { template: string; params: Record<string, string> }[] = []) =>
     post<{ ok: boolean }>('/onboarding', { about, companion, modules }),
+  setAbout: (key: string, value: string) => post<Record<string, string>>('/about', { key, value }),
   modules: () => call<Mod[]>('/modules'),
   templates: () => call<Template[]>('/templates'),
   createModule: (template: string, params: Record<string, string>) => post<Mod>('/modules', { template, params }),

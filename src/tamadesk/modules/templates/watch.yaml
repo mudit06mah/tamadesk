@@ -2,7 +2,7 @@ title: Web watch
 blurb: Keeps an eye on the web for anything you describe, e.g. "new open-source quantum simulators".
 icon: eye
 params:
-  what: {label: "What should I watch for?", default: "new open-source developer tools launches"}
+  what: {label: "What should I watch for?", default: "new open-source developer tools launches", from: interests}
 module:
   name: Watch
   icon: eye

@@ -249,6 +249,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
 
       <NewTabDialog
         open={newTab}
+        interests={state.about.interests ?? ''}
         onClose={() => setNewTab(false)}
         notify={notify}
         onCreated={(m) => {

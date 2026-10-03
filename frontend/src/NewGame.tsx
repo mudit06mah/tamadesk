@@ -58,7 +58,7 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
   const [brain, setBrain] = useState<{ ok: boolean; name: string; detail: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const templates = useTemplates()
-  const watch = usePicks(true)
+  const watch = usePicks(true, about.interests ?? '')
   const [err, setErr] = useState('')
 
   useEffect(() => {
@@ -280,7 +280,7 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
                     params={watch.of(t.key)?.params ?? {}}
                     onToggle={() => {
                       play('tap')
-                      watch.toggle(t.key)
+                      watch.toggle(t)
                     }}
                     onParam={(k, v) => watch.setParam(t.key, k, v)}
                   />

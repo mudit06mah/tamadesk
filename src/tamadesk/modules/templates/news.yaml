@@ -2,7 +2,7 @@ title: Tech news
 blurb: Hacker News stories on your topics, plus any blogs or news feeds you add.
 icon: news
 params:
-  topics: {label: "Topics", default: "startups, programming"}
+  topics: {label: "Topics", default: "startups, programming", from: interests}
   feed: {label: "Extra RSS feed (optional)", default: ""}
 module:
   name: News
