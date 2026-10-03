@@ -127,7 +127,7 @@ export function Today({
   return (
     <div className="today">
       <form
-        className={`capture ${kind ?? ''}`}
+        className="capture"
         onSubmit={(e) => {
           e.preventDefault()
           void submit()
