@@ -74,7 +74,7 @@ template for "describe it", and a summary when you press tl;dr. Both run on the 
 ### Start at login (Linux)
 
 ```sh
-sed "s#@REPO@#$PWD#" deploy/tamadesk.service > ~/.config/systemd/user/tamadesk.service
+sed -e "s#@REPO@#$PWD#" -e "s#@PATH@#$PATH#" deploy/tamadesk.service > ~/.config/systemd/user/tamadesk.service
 systemctl --user enable --now tamadesk
 ```
 

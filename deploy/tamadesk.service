@@ -1,6 +1,6 @@
 # tamadesk as a systemd *user* service: starts at login, restarts on failure.
 # Install (from the repo folder):
-#   sed "s#@REPO@#$PWD#" deploy/tamadesk.service > ~/.config/systemd/user/tamadesk.service
+#   sed -e "s#@REPO@#$PWD#" -e "s#@PATH@#$PATH#" deploy/tamadesk.service > ~/.config/systemd/user/tamadesk.service
 #   systemctl --user enable --now tamadesk
 # Logs: journalctl --user -u tamadesk -f
 [Unit]
@@ -10,8 +10,9 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=@REPO@
-# claude (the brain) and notify-send (reminders) must be on PATH
-Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+# your shell's PATH at install time, so the service finds the same tools you do:
+# claude (the brain), mcporter (agent-reach web search, often under nvm), notify-send (reminders)
+Environment=PATH=@PATH@
 ExecStart=%h/.local/bin/uv run --frozen tamadesk serve
 Restart=on-failure
 # uv exits 143 on a normal SIGTERM (logout/shutdown/restart); don't log that as a failure

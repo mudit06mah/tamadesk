@@ -154,7 +154,11 @@ def exa(query: str, limit: int = 10, objective: str = "") -> list[Item]:
     """Exa semantic web search through agent-reach's mcporter config (free, no key, no login).
     Good for things without a feed: companies, people's blogs, niche news."""
     if not agent_reach_ready():
-        raise RuntimeError("web search needs agent-reach: pipx install agent-reach && agent-reach install")
+        raise RuntimeError(
+            "web search needs agent-reach's mcporter, which isn't on tamadesk's PATH. Install it "
+            "(pipx install agent-reach && agent-reach install), or if you have it, reinstall the service "
+            "so it picks up your PATH (see README, 'Start at login')"
+        )
     proc = subprocess.run(
         ["mcporter", "call", "exa.web_search_exa", f"query={query}", f"numResults:{limit}",
          f"objective={objective or 'the most relevant, recent pages'}", "--output", "json"],
