@@ -1,12 +1,23 @@
 title: YouTube channels
-blurb: New uploads from channels you like, without the algorithm. Paste a channel's ID (UC…).
+blurb: New uploads from channels you like, without the algorithm. Paste a channel's
+  ID (UC…).
 icon: play
 params:
-  channel: {label: "YouTube channel ID (starts with UC)", default: "UCsBjURrPoezykLs9EqgamOA"}
+  channel:
+    label: YouTube channel ID (starts with UC)
+    default: UCsBjURrPoezykLs9EqgamOA
 module:
   name: Videos
   icon: play
   every: 6h
   sources:
-    - {type: rss, url: "https://www.youtube.com/feeds/videos.xml?channel_id=${channel}"}
-  actions: [save, skip, open]
+  - type: rss
+    url: https://www.youtube.com/feeds/videos.xml?channel_id=${channel}
+  actions:
+  - save
+  - skip
+  - open
+  workflows:
+  - label: Watch list
+    prompt: Make a todo for each video below worth watching, with the link, shortest
+      first.

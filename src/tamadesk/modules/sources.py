@@ -218,10 +218,30 @@ def agent_reach_ready() -> bool:
     return shutil.which("mcporter") is not None
 
 
+# results from these are login walls or re-posts of someone else's page: never useful as an item
+WALLED = ("linkedin.com", "facebook.com", "instagram.com", "x.com", "twitter.com", "indeed.", "glassdoor.",
+          "ziprecruiter.", "pinterest.", "quora.com")  # fmt: skip
+
+
+def _host(url: str) -> str:
+    return re.sub(r"^www\.", "", url.split("/")[2]) if url.count("/") >= 2 else ""
+
+
 @source("exa")
-def exa(query: str, limit: int = 10, objective: str = "") -> list[Item]:
+def exa(query: str, limit: int = 10, objective: str = "", exclude: str = "") -> list[Item]:
     """Exa semantic web search through agent-reach's mcporter config (free, no key, no login).
-    Good for things without a feed: companies, people's blogs, niche news."""
+    Good for things without a feed: companies, people's blogs, niche news. Login-walled sites and job
+    aggregators are always dropped; `exclude` adds more hosts (comma separated)."""
+    items = _exa(query, limit + 5, objective)
+    blocked = WALLED + tuple(h.strip() for h in exclude.split(",") if h.strip())
+    items = [i for i in items if not any(b in _host(i.url) for b in blocked)][:limit]
+    for i in items:  # a careers page or ATS posting is itself the place to apply
+        if APPLY_RE.search(i.url):
+            i.data["apply_url"] = i.url
+    return items
+
+
+def _exa(query: str, limit: int, objective: str) -> list[Item]:
     if not agent_reach_ready():
         raise RuntimeError(
             "web search needs agent-reach's mcporter, which isn't on tamadesk's PATH. Install it "
@@ -250,11 +270,128 @@ def parse_exa(text: str) -> list[Item]:
             continue
         date = re.search(r"^Published:\s*(\S+)", block, re.MULTILINE)
         body = block.split("Highlights:", 1)[-1] if "Highlights:" in block else ""
-        host = re.sub(r"^www\.", "", url[1].split("/")[2]) if url[1].count("/") >= 2 else ""
-        out.append(Item(ext_id=uid(url[1]), title=clean(title[1], 200), url=url[1], subtitle=host,
+        out.append(Item(ext_id=uid(url[1]), title=clean(title[1], 200), url=url[1], subtitle=_host(url[1]),
                         body=clean(re.sub(r"[#*\[\]|]|-{3,}", " ", body)),
                         published=date[1] if date and date[1] != "N/A" else ""))  # fmt: skip
     return out
+
+
+# ---------------------------------------------------------------- jobs, straight from the companies
+
+EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+APPLY_RE = re.compile(
+    r"career|jobs?\b|apply|hiring|ashbyhq|greenhouse|lever\.co|workable|join", re.IGNORECASE
+)
+
+
+def parse_hiring(hit: dict) -> Item | None:
+    """One 'Who is hiring?' comment -> a job: headline, the company's own apply link, a published email."""
+    html = unescape(hit.get("comment_text") or "")
+    if not html:
+        return None
+    head = clean(html.split("<p>", 1)[0], 160)
+    links = [u for u in re.findall(r'href="([^"]+)"', html) if "ycombinator.com" not in u]
+    apply = next((u for u in links if APPLY_RE.search(u)), links[0] if links else "")
+    text = clean(html, 2000)
+    email = next((e for e in EMAIL_RE.findall(text) if not e.lower().startswith(("noreply", "no-reply"))), "")
+    post = f"https://news.ycombinator.com/item?id={hit['objectID']}"
+    return Item(
+        ext_id=f"hnj{hit['objectID']}", title=head, url=apply or post, subtitle=f"{head.split('|')[0].strip()[:40]} · HN hiring",
+        body=clean(html.split("<p>", 1)[-1], 500), published=hit.get("created_at", ""),
+        data={"apply_url": apply, "email": email, "email_source": post if email else "", "discussion": post,
+              "company": head.split("|")[0].strip()},
+    )  # fmt: skip
+
+
+def _role_line(title: str) -> str:
+    """'Company | Role | Location | …' -> just the first fields (descriptions mention everything)."""
+    parts = title.split("|")
+    return " ".join(parts[:3]).lower() if len(parts) > 2 else title[:120].lower()
+
+
+@source("hn_jobs")
+def hn_jobs(query: str, limit: int = 25, remote: bool = False) -> list[Item]:
+    """This month's Hacker News 'Who is hiring?' posts matching the query. Posted by the companies
+    themselves, usually with a direct apply link and sometimes a hiring email."""
+    stories = get_json("https://hn.algolia.com/api/v1/search_by_date",
+                       params={"tags": "story,author_whoishiring", "hitsPerPage": 6})["hits"]  # fmt: skip
+    thread = next((h for h in stories if "who is hiring" in h["title"].lower()), None)
+    if thread is None:
+        return []
+    # one precise query per comma-separated phrase (all its words required), then merged
+    phrases = [re.findall(r"\w+", p.lower()) for p in query.split(",") if p.strip()][:6]
+    hits: dict[str, dict] = {}
+    for words in phrases:
+        for h in get_json("https://hn.algolia.com/api/v1/search", params={
+            "tags": f"comment,story_{thread['objectID']}", "query": " ".join(words), "hitsPerPage": 60,
+        })["hits"]:  # fmt: skip
+            hits.setdefault(h["objectID"], h)
+    jobs = [i for h in hits.values() if (i := parse_hiring(h))]
+    jobs = [
+        i for i in jobs if not re.search(r"(?i)location:|willing to relocate|seeking work", i.title)
+    ]  # seekers
+    # Algolia matches anywhere in a long post: keep the ones whose role line is actually about it
+    jobs = [
+        i
+        for i in jobs
+        if any(all(re.search(rf"\b{re.escape(w)}", _role_line(i.title)) for w in p) for p in phrases)
+    ]
+    return [i for i in jobs if not remote or "remote" in f"{i.title} {i.body}".lower()]
+
+
+ATS = {
+    "ashby": "https://api.ashbyhq.com/posting-api/job-board/{slug}",
+    "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
+    "lever": "https://api.lever.co/v0/postings/{slug}?mode=json",
+}
+
+
+def _board(slug: str) -> list[dict]:
+    """A company's open roles from whichever public ATS board answers: [{title, url, location}]."""
+    for ats, url in ATS.items():
+        try:
+            data = get_json(url.format(slug=slug), timeout=12)
+        except Exception:  # noqa: BLE001, S112 - not on this ATS
+            continue
+        rows = data.get("jobs", []) if isinstance(data, dict) else data
+        if ats == "ashby":
+            return [
+                {
+                    "title": j["title"],
+                    "url": j.get("applyUrl") or j["jobUrl"],
+                    "location": j.get("location", ""),
+                }
+                for j in rows
+            ]
+        if ats == "greenhouse":
+            return [
+                {
+                    "title": j["title"],
+                    "url": j["absolute_url"],
+                    "location": (j.get("location") or {}).get("name", ""),
+                }
+                for j in rows
+            ]
+        return [{"title": j["text"], "url": j.get("applyUrl") or j["hostedUrl"],
+                 "location": (j.get("categories") or {}).get("location", "")} for j in rows]  # fmt: skip
+    return []
+
+
+@source("company_jobs")
+def company_jobs(companies: str, query: str = "", limit: int = 30) -> list[Item]:
+    """Open roles from companies' own job boards (Ashby, Greenhouse, Lever), each with its direct apply
+    link. companies: board names, comma separated (usually the company name, e.g. 'linear, vercel')."""
+    words = [w for w in re.findall(r"\w+", query.lower()) if len(w) > 2]
+    out: list[Item] = []
+    for name in [c.strip() for c in companies.split(",") if c.strip()][:15]:
+        slug = re.sub(r"[^a-z0-9-]", "", name.lower().replace(" ", ""))
+        for j in _board(slug):
+            if words and not any(w in j["title"].lower() for w in words):
+                continue
+            out.append(Item(ext_id=uid(j["url"]), title=f"{j['title']} at {name}", url=j["url"],
+                            subtitle=f"{name} · {j['location'] or 'location n/a'}",
+                            data={"apply_url": j["url"], "company": name}))  # fmt: skip
+    return out[:limit]
 
 
 @source("agent")

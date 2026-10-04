@@ -129,8 +129,11 @@ def replace_spec(module_id: str, body: dict, conn: Conn) -> dict:
 def _replace(conn, m: spec.Module) -> dict:
     """Save a changed tab: old errors are cleared, it's re-ranked, rescheduled and refreshed now."""
     s = get_settings()
+    old = spec.get(s, m.id)
     spec.save(s, m)
     conn.execute("UPDATE module_runs SET last_error = NULL WHERE module = ?", (m.id,))
+    if old and old.sources != m.sources:  # new sources: refetch what's unseen (kept items stay)
+        conn.execute("DELETE FROM items WHERE module = ? AND status = 'new'", (m.id,))
     engine.rescore(conn, m)
     jobs.sync_modules(s)
     jobs.run_now(m.id)

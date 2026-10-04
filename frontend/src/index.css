@@ -2619,3 +2619,141 @@ button.check-box:active {
     transition: none !important;
   }
 }
+
+/* ----------------------------------------------------------------- workflows, apply, editor, notes */
+.ask-bubble {
+  display: inline-block;
+  overflow: hidden;
+}
+
+.bubble-text {
+  display: inline-block;
+  white-space: nowrap;
+  max-width: min(70vw, 820px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.workflows {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 16px;
+}
+
+.chip.flow {
+  border-style: solid;
+  background: var(--accent-soft);
+}
+
+.chip.flow:hover {
+  background: var(--accent);
+  color: var(--inverse-fg);
+}
+
+.btn.apply {
+  text-decoration: none;
+}
+
+.edit-modes {
+  align-self: flex-start;
+}
+
+.edit-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.edit-wish,
+.dialog-form textarea.yaml {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--field);
+  color: var(--text);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  font-family: 'VT323', monospace;
+  font-size: 20px;
+  line-height: 1.25;
+  resize: vertical;
+}
+
+.edit-wish {
+  min-height: 150px;
+}
+
+.dialog-form textarea.yaml {
+  min-height: min(52vh, 460px);
+  font-size: 18px;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.notes-grid {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.notes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notes-list .nav-row {
+  width: 100%;
+}
+
+.note-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.note-read {
+  max-height: 64vh;
+  overflow: auto;
+}
+
+.note-read .md h4 {
+  font-size: 18px;
+}
+
+.note-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.note-edit input,
+.note-edit textarea {
+  padding: 8px 10px;
+  background: var(--field);
+  color: var(--text);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  font-family: 'VT323', monospace;
+  font-size: 19px;
+}
+
+.note-edit textarea {
+  min-height: 52vh;
+  resize: vertical;
+}
+
+.note-foot {
+  margin-top: 12px;
+}
+
+@media (max-width: 900px) {
+  .notes-grid {
+    grid-template-columns: 1fr;
+  }
+}

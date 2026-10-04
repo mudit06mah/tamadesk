@@ -4,12 +4,13 @@ import { api, askBolt, when, type Mod, type State } from './api'
 import { Companion, CompanionCtx } from './Companion'
 import { FxProvider, useFx } from './fx/Fx'
 import { play, setSound, soundOn } from './fx/sound'
-import { BrainIcon, CodeIcon, GearIcon, HomeIcon, MailIcon, ModIcon, PaletteIcon, PlusIcon } from './icons'
+import { BrainIcon, CodeIcon, PenIcon, GearIcon, HomeIcon, MailIcon, ModIcon, PaletteIcon, PlusIcon } from './icons'
 import { GitHub } from './GitHub'
 import { applyTheme, savedTheme } from './themes'
 import { ThemePicker } from './ThemePicker'
 import { AskProvider } from './AskStore'
 import { Memory } from './Memory'
+import { Notes } from './Notes'
 import { Mail } from './Mail'
 import { ModulePage } from './ModulePage'
 import { NewGame } from './NewGame'
@@ -21,7 +22,7 @@ import { isTyping, type Toast } from './util'
 
 // fixed pages, plus one `m:<id>` page per module tab (between Today and Journal)
 export type Page = string
-const CORE: Page[] = ['today', 'mail', 'github', 'memory']
+const CORE: Page[] = ['today', 'mail', 'notes', 'github', 'memory']
 const pagesFor = (mods: Mod[]): Page[] => [...CORE, ...mods.map((m) => `m:${m.id}`), 'settings']
 
 function remembered(key: string): number | null {
@@ -188,6 +189,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   const core: { id: Page; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'today', label: 'Today', icon: <HomeIcon />, count: state.today.open.length },
     { id: 'mail', label: 'Mail', icon: <MailIcon />, count: state.mail_drafts },
+    { id: 'notes', label: 'Notes', icon: <PenIcon /> },
     { id: 'github', label: 'GitHub', icon: <CodeIcon /> },
     { id: 'memory', label: 'Memory', icon: <BrainIcon /> },
   ]
@@ -300,6 +302,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
             {(page === 'today' || (page.startsWith('m:') && !mod)) && <Today state={state} refresh={refresh} notify={notify} />}
             {mod && <ModulePage key={mod.id} mod={mod} notify={notify} onChange={refresh} onDeleted={() => (go('today'), void refresh())} />}
             {page === 'memory' && <Memory notify={notify} />}
+            {page === 'notes' && <Notes notify={notify} />}
             {page === 'mail' && <Mail notify={notify} onChange={refresh} />}
             {page === 'github' && <GitHub notify={notify} />}
             {page === 'settings' && <Settings state={state} refresh={refresh} notify={notify} replay={() => setReplay(true)} theme={theme} setTheme={setTheme} />}

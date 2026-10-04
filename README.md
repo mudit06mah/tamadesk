@@ -51,6 +51,21 @@ first?".
 - Add your resume or a product brief (PDF, .md, .txt). Bolt reads them only when a task needs
   them, so they cost nothing otherwise.
 
+**Tabs that know your next step:** each tab has one-click ✦ workflows for what you kept.
+- **Papers:** "Write a blog post" or "Study notes".
+- **Jobs:** "Draft applications". Leads: "Email them". Repos: "Compare them".
+
+Bolt does the work, and longer writing lands in **Notes**, where you can read, edit, copy or
+download it as markdown.
+
+**Job hunting, straight from companies:**
+- Hacker News "Who is hiring?" posts written by the companies themselves.
+- Companies' own job boards (Ashby, Greenhouse, Lever).
+- Web search limited to careers pages, with no LinkedIn or aggregator pages.
+
+Every job has **apply ↗** to the company's own page and **email them**, which uses the hiring
+address the company published.
+
 **For developers:**
 - A **Release radar** for many repos, or everything you've starred.
 - **Issues to pick up:** good-first-issues, or triage of your own repos.

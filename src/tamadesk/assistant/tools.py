@@ -81,10 +81,13 @@ def list_tabs(s: Settings, conn: sqlite3.Connection) -> list[dict]:
       "Use source type 'agent' {task} only when no feed/search can express the need (it costs tokens per run). "
       "icon: book|news|code|target|eye|play|pen|star. "
       "every: 30m|6h|7d|'daily HH:MM'. actions from: save, skip, open, summarize, todo, draft. "
-      "notify: true pings the desktop when something new arrives (status pages, launches, releases).",
+      "notify: true pings the desktop when something new arrives (status pages, launches, releases). "
+      "workflows: up to 4 one-click {label, prompt} for what the user would do next with kept items "
+      "(e.g. papers: 'Write a blog post'; jobs: 'Draft applications'), always add 1-3 that fit.",
       {"name": S, "icon": S, "every": S,
        "sources": {"type": "array", "items": {"type": "object"}}, "interests": {"type": "array", "items": S},
-       "actions": {"type": "array", "items": S}, "notify": {"type": "boolean"}},
+       "actions": {"type": "array", "items": S}, "notify": {"type": "boolean"},
+       "workflows": {"type": "array", "items": {"type": "object", "properties": {"label": S, "prompt": S}}}},
       ["name", "sources"])  # fmt: skip
 def create_tab(s: Settings, conn: sqlite3.Connection, **kw) -> dict | str:
     m = spec.Module(**{"id": spec.slug(kw["name"])} | kw)  # validated here, so errors come back to the model
@@ -253,6 +256,15 @@ def read_doc(s: Settings, conn: sqlite3.Connection, ref: str) -> str:
       "latest release. Use it to compare tools or check if something is maintained.", {"repo": S})  # fmt: skip
 def repo_info(s: Settings, conn: sqlite3.Connection, repo: str) -> dict:
     return sources.repo_info(repo.strip().removeprefix("https://github.com/").strip("/"))
+
+
+@tool("write_note", "Save a piece of writing for the user to the Notes page (markdown): blog drafts, study "
+      "notes, digests, comparisons. Same title replaces the earlier version.", {"title": S, "markdown": S})  # fmt: skip
+def write_note(s: Settings, conn: sqlite3.Connection, title: str, markdown: str) -> str:
+    from tamadesk.life.writer import clean
+
+    nid = docs.save_note(conn, title, clean(markdown))
+    return f"saved to Notes as '{title}' (#{nid})"
 
 
 @tool("github_status", "The user's open GitHub work: their PRs (review decision, CI checks), issues assigned to "

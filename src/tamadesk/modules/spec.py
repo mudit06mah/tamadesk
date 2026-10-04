@@ -46,6 +46,14 @@ class Source(BaseModel, extra="allow"):
         return self
 
 
+class Workflow(BaseModel):
+    """A one-click 'do something with what I kept' for a tab: the prompt goes to the assistant along
+    with the kept items."""
+
+    label: str = Field(min_length=1, max_length=40)
+    prompt: str = Field(min_length=5, max_length=1000)
+
+
 class Module(BaseModel):
     id: str = Field(pattern=r"^[a-z0-9-]{1,32}$")
     name: str = Field(min_length=1, max_length=24)
@@ -56,6 +64,7 @@ class Module(BaseModel):
     actions: list[Action] = ["save", "skip", "open"]
     keep: int = Field(default=150, ge=10, le=1000)  # most unseen items kept per module
     notify: bool = False  # a desktop notification when a refresh brings something new
+    workflows: list[Workflow] = Field(default=[], max_length=4)
 
     @field_validator("every")
     @classmethod

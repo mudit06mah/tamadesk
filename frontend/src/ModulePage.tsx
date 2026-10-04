@@ -57,6 +57,15 @@ export function ModulePage({ mod, notify, onChange, onDeleted }: Props) {
     onChange()
   }
 
+  const runFlow = async (w: { label: string; prompt: string }) => {
+    let kept = (await api.items(mod.id, 'saved')).items
+    const note = kept.length ? '' : ' (nothing kept yet, so these are the best new ones)'
+    if (!kept.length) kept = (await api.items(mod.id, 'new')).items.slice(0, 6)
+    if (!kept.length) return notify(`Nothing in ${mod.name} yet. Refresh it first.`, 'err')
+    const list = kept.slice(0, 15).map((it) => `- ${it.title}${it.url ? ` (${it.url})` : ''}${it.data.email ? ` [published email: ${it.data.email}]` : ''} [item ${it.id}]`)
+    askBolt(`${w.prompt}\n\nFrom my "${mod.name}" tab${note}:\n${list.join('\n')}`, true)
+  }
+
   const refresh = async () => {
     await api.runModule(mod.id)
     fx.sound('tap')
@@ -88,6 +97,24 @@ export function ModulePage({ mod, notify, onChange, onDeleted }: Props) {
           </button>
         </div>
       </header>
+      {mod.workflows.length > 0 && (
+        <div className="workflows">
+          <span className="muted small">with what you kept:</span>
+          {mod.workflows.map((w, i) => (
+            <motion.button
+              key={w.label}
+              className="chip flow"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0, transition: { delay: 0.05 * i } }}
+              whileTap={{ scale: 0.92 }}
+              onClick={() => runFlow(w)}
+              title={w.prompt}
+            >
+              ✦ {w.label}
+            </motion.button>
+          ))}
+        </div>
+      )}
       <AnimatePresence>
         {mod.run?.last_error && (
           <motion.div className="source-trouble" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
@@ -189,31 +216,85 @@ function YamlDialog({
   notify: Props['notify']
 }) {
   const fx = useFx()
+  const buddy = useCompanion()
+  const [mode, setMode] = useState<'bolt' | 'yaml'>('bolt')
   const [text, setText] = useState('')
+  const [wish, setWish] = useState('')
   const [confirm, setConfirm] = useState(false)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- load the file into the editor when opened
     if (yaml !== null) setText(yaml)
     setConfirm(false)
   }, [yaml])
+
+  const submit = async () => {
+    if (mode === 'bolt') {
+      if (!wish.trim()) return
+      askBolt(`Update my "${mod.name}" tab (id ${mod.id}): ${wish.trim()}`, true)
+      setWish('')
+      onClose()
+      return
+    }
+    try {
+      await api.saveModuleYaml(mod.id, text)
+      fx.sound('stamp')
+      notify('Saved')
+      onSaved()
+    } catch (err) {
+      notify((err as Error).message, 'err')
+    }
+  }
+
   return (
-    <Dialog open={yaml !== null} title={`${mod.id}.yaml`} onClose={onClose}>
+    <Dialog open={yaml !== null} title={`${mod.id}.tab`} onClose={onClose} wide>
       <form
         className="dialog-form"
-        onSubmit={async (e) => {
+        onSubmit={(e) => {
           e.preventDefault()
-          try {
-            await api.saveModuleYaml(mod.id, text)
-            fx.sound('stamp')
-            notify('Saved')
-            onSaved()
-          } catch (err) {
-            notify((err as Error).message, 'err')
-          }
+          void submit()
         }}
       >
-        <p className="dialog-lead">This tab is just this file. Change sources, schedule (30m, 6h, daily 08:00) or buttons. Or just ask your companion to change it.</p>
-        <textarea className="yaml" data-autofocus spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
+        <div className="seg-tabs edit-modes" role="tablist">
+          {(['bolt', 'yaml'] as const).map((m) => (
+            <button type="button" key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'on' : ''} onClick={() => (fx.sound('tap'), setMode(m))}>
+              {m === 'bolt' ? `Tell ${buddy.name}` : 'Edit YAML'}
+              {mode === m && <motion.span layoutId="edit-mode" className="seg-tab-on" />}
+            </button>
+          ))}
+        </div>
+        <AnimatePresence mode="wait">
+          {mode === 'bolt' ? (
+            <motion.div key="bolt" className="edit-pane" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
+              <p className="dialog-lead">Say what should change, in plain words. {buddy.name} edits the tab and checks the new sources work.</p>
+              <textarea
+                data-autofocus
+                className="edit-wish"
+                value={wish}
+                onChange={(e) => setWish(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && void submit()}
+                placeholder="e.g. only remote roles in Europe · add Linear and Vercel's job boards · refresh every morning at 8 · ping me when something new shows up"
+              />
+            </motion.div>
+          ) : (
+            <motion.div key="yaml" className="edit-pane" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+              <p className="dialog-lead">This tab is just this file: sources, schedule (30m, 6h, daily 08:00), buttons and workflows.</p>
+              <textarea
+                className="yaml"
+                spellCheck={false}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Tab') return
+                  e.preventDefault() // Tab indents (two spaces) instead of leaving the editor
+                  const el = e.currentTarget
+                  const at = el.selectionStart
+                  setText(text.slice(0, at) + '  ' + text.slice(el.selectionEnd))
+                  requestAnimationFrame(() => el.setSelectionRange(at + 2, at + 2))
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="dialog-actions">
           <button
             type="button"
@@ -228,10 +309,13 @@ function YamlDialog({
           >
             {confirm ? 'Really delete this tab?' : 'Delete tab'}
           </button>
+          <span className="grow" />
           <button type="button" className="btn ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn solid">Save</button>
+          <button className="btn solid" disabled={mode === 'bolt' && !wish.trim()}>
+            {mode === 'bolt' ? `Ask ${buddy.name}` : 'Save'}
+          </button>
         </div>
       </form>
     </Dialog>

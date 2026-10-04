@@ -8,7 +8,7 @@ import sqlite3
 
 from pypdf import PdfReader
 
-KINDS = ("resume", "product", "notes", "other")
+KINDS = ("resume", "product", "notes", "other", "note")
 MAX_CHARS = 60_000
 
 
@@ -24,6 +24,18 @@ def add(conn: sqlite3.Connection, name: str, kind: str, data_b64: str) -> int:
         raise ValueError("couldn't read any text from that file (scanned PDFs aren't supported yet)")
     return conn.execute("INSERT INTO docs (name, kind, text) VALUES (?, ?, ?)",
                         (name[:120], kind if kind in KINDS else "other", text[:MAX_CHARS])).lastrowid  # fmt: skip
+
+
+def save_note(conn: sqlite3.Connection, title: str, text: str) -> int:
+    """A note written by the assistant (blog draft, study notes, comparison). Same title = new version."""
+    title = title.strip()[:120] or "untitled"
+    row = conn.execute("SELECT id FROM docs WHERE kind = 'note' AND name = ?", (title,)).fetchone()
+    if row:
+        conn.execute("UPDATE docs SET text = ? WHERE id = ?", (text[:MAX_CHARS], row["id"]))
+        return row["id"]
+    return conn.execute(
+        "INSERT INTO docs (name, kind, text) VALUES (?, 'note', ?)", (title, text[:MAX_CHARS])
+    ).lastrowid
 
 
 def listing(conn: sqlite3.Connection) -> list[dict]:

@@ -1,0 +1,41 @@
+title: Job hunt
+blurb: Openings straight from the companies (HN hiring posts, their own job boards),
+  with apply links and hiring emails.
+icon: target
+params:
+  role:
+    label: Roles (comma separated)
+    default: product designer, ui designer, ux designer
+  companies:
+    label: Companies to watch (optional, comma separated)
+    default: ''
+module:
+  name: Jobs
+  icon: target
+  every: daily 09:00
+  sources:
+  - type: hn_jobs
+    query: ${role}
+    remote: true
+  - type: company_jobs
+    companies: ${companies}
+    query: ${role}
+  - type: exa
+    query: ${role} remote job opening, apply on the company careers page
+    objective: job postings on company career pages or ATS boards (Ashby, Greenhouse,
+      Lever, Workable), not job aggregators
+    exclude: remotive.com, remoshift.com, weworkremotely.com, wellfound.com, builtin.com
+  actions:
+  - save
+  - skip
+  - open
+  - draft
+  - todo
+  workflows:
+  - label: Draft applications
+    prompt: For each job below, research the company briefly and draft a short, specific
+      application email in Mail in my voice (use my resume via read_doc). Use the
+      hiring email from the posting when listed; otherwise say where to apply.
+  - label: Plan my applications
+    prompt: Make a todo to apply to each job below, with the apply link, most promising
+      first.

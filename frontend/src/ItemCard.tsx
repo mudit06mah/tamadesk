@@ -17,7 +17,10 @@ export function useItemActions(notify: (t: string, k?: Toast['kind']) => void, o
     try {
       if (a === 'draft') {
         // outreach is real work (research + writing): hand it to the companion
-        askBolt(`Research this lead and draft an outreach email to them in Mail (item ${it.id}): ${it.title} ${it.url ?? ''}`.trim(), true)
+        const d = it.data
+        const contact = d.email ? ` The posting publishes ${d.email} (source: ${d.email_source}).` : ''
+        const what = d.apply_url ? 'job posting: draft a short application email in Mail (use my resume)' : 'lead: draft an outreach email to them in Mail'
+        askBolt(`Research this ${what} (item ${it.id}): ${it.title} ${it.url ?? ''}.${contact}`.trim(), true)
       } else if (a === 'todo') {
         await api.itemTodo(it.id)
         fx.sound('capture')
@@ -98,6 +101,11 @@ export function ItemCard({
             {busy && a === 'summarize' ? <span className="blink">reading…</span> : LABEL[a]}
           </motion.button>
         ))}
+        {it.data.apply_url && (
+          <a className="btn tiny solid apply" href={it.data.apply_url} target="_blank" rel="noreferrer">
+            apply ↗
+          </a>
+        )}
         {it.data.discussion && (
           <a className="btn tiny ghost" href={it.data.discussion} target="_blank" rel="noreferrer">
             discussion ↗

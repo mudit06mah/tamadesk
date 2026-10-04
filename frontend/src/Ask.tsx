@@ -122,8 +122,13 @@ export function AskPanel({
           </div>
         </div>
         <div className="ask-main">
-          <motion.div key={say} className={`bubble ask-bubble ${running ? 'working' : ''}`} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
-            {say}
+          {/* the bubble stays put and resizes; only its words crossfade (no jumpy re-entrance per step) */}
+          <motion.div layout className={`bubble ask-bubble ${running ? 'working' : ''}`} transition={{ type: 'spring', stiffness: 500, damping: 38 }}>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span key={say} className="bubble-text" initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: 0.14 }}>
+                {say}
+              </motion.span>
+            </AnimatePresence>
           </motion.div>
           <form
             className={`ask-box ${running ? 'busy' : ''}`}
@@ -134,7 +139,7 @@ export function AskPanel({
           >
             <textarea
               ref={inputRef}
-              rows={2}
+              rows={3}
               value={text}
               disabled={running}
               onChange={(e) => {

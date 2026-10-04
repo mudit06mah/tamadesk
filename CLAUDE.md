@@ -27,6 +27,7 @@ An open-source (MIT) personal assistant with a pixel companion: ask it to do thi
 - **Assistant first:** the Ask box (`assistant/`) is the main way to use the app; buttons and the template gallery are the manual fallback. New capabilities should be a tool in `assistant/tools.py` (reusing existing code) before they're a page.
 - **Tokens and compute:** every Claude call is capped (`--max-budget-usd`), recorded in `usage`, and checked against the daily budget. Fetching, ranking and rendering cost zero tokens. Background jobs use `light=True`. Keep jobs on the 2-thread scheduler and prune data.
 - **Assistant safety:** only `--tools WebFetch` plus the tamadesk and allowed agent-reach MCP servers. Never a shell or file-edit tool. Tools that change things outside the desk (sending mail) don't exist: Bolt drafts, the user sends.
+- **Think in the user's next step:** every template carries 1-3 `workflows` (what you'd do with kept items), and items carry the data their next action needs (`apply_url`, published `email`). Sources go to the original (company pages, ATS boards), never aggregators or login walls (`sources.WALLED`).
 - **Modules, not custom pages:** a new kind of tab is a template YAML plus, if needed, one `@source` function. New views are rare and must work for any module.
 - **DRY:** one HTTP helper (`core/net.py`), one item card plus action hook (`ItemCard.tsx`), and one template card for the gallery and New Game.
 - **Motion and sound:** follow the tables in `docs/plan.md`. Respect reduced motion and the mute toggle.

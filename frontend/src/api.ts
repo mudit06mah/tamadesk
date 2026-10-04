@@ -37,6 +37,7 @@ export type GhRepo = { repo: string; url: string; pushed_at: string; stars: numb
 export type GitHubStatus = { error?: string; login?: string; prs?: GhRow[]; issues?: GhRow[]; reviews?: GhRow[]; shipped?: GhRow[]; repos?: GhRepo[] }
 export type MemHit = { day: string; kind: string; text: string; ref: string }
 export type MemDay = { day: string; things: number; chats: { id: number; title: string }[]; summary: string | null; facts: string[] }
+export type Note = { id: number; name: string; text: string; created_at: string }
 export type Doc = { id: number; name: string; kind: string; chars: number; created_at: string }
 export type Question = { key: string; q: string; hint: string }
 export type CompanionChoice = { species: string; label: string; blurb: string }
@@ -52,6 +53,8 @@ export type Mod = {
   new: number
   saved: number
   run: { last_run: string | null; last_error: string | null; added: number | null } | null
+  workflows: { label: string; prompt: string }[]
+  notify?: boolean
 }
 export type Template = { key: string; title: string; blurb: string; icon: string; params: Record<string, { label: string; default?: string; from?: 'interests' }> }
 export type ModItem = {
@@ -66,7 +69,15 @@ export type ModItem = {
   why: string[]
   status: string
   published_at: string | null
-  data: { summary?: { summary: string; why_you: string }; discussion?: string; topics?: string[] }
+  data: {
+    summary?: { summary: string; why_you: string }
+    discussion?: string
+    topics?: string[]
+    apply_url?: string
+    email?: string
+    email_source?: string
+    company?: string
+  }
 }
 
 export type Progress = {
@@ -160,6 +171,8 @@ export const api = {
   docs: () => call<Doc[]>('/docs'),
   addDoc: (name: string, kind: string, data_b64: string) => post<{ id: number }>('/docs', { name, kind, data_b64 }),
   deleteDoc: (id: number) => call(`/docs/${id}`, { method: 'DELETE' }),
+  notes: () => call<Note[]>('/notes'),
+  saveNote: (id: number, name: string, text: string) => call(`/notes/${id}`, { method: 'PUT', body: JSON.stringify({ name, text }) }),
   recap: () => post<Recap>('/recap'),
   brainCheck: () => call<{ ok: boolean; name: string; detail: string }>('/brain/check'),
   settings: (s: { brain_kind?: string; brain_model?: string; recap_hour?: number; todo_goal?: number; assistant_model?: string; assistant_effort?: string; max_usd_per_ask?: number; daily_usd?: number }) =>

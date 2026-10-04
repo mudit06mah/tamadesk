@@ -147,7 +147,7 @@ class DocIn(BaseModel):
 
 @router.get("/docs")
 def list_docs(conn: Conn) -> list[dict]:
-    return docs.listing(conn)
+    return [d for d in docs.listing(conn) if d["kind"] != "note"]  # notes have their own page
 
 
 @router.post("/docs")
@@ -161,6 +161,29 @@ def add_doc(d: DocIn, conn: Conn) -> dict:
 @router.delete("/docs/{doc_id}")
 def delete_doc(doc_id: int, conn: Conn) -> dict:
     conn.execute("DELETE FROM docs WHERE id = ?", (doc_id,))
+    return {"ok": True}
+
+
+@router.get("/notes")
+def notes(conn: Conn) -> list[dict]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT id, name, text, created_at FROM docs WHERE kind = 'note' ORDER BY id DESC"
+        )
+    ]
+
+
+class NoteIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    text: str = Field(max_length=60_000)
+
+
+@router.put("/notes/{note_id}")
+def edit_note(note_id: int, n: NoteIn, conn: Conn) -> dict:
+    conn.execute(
+        "UPDATE docs SET name = ?, text = ? WHERE id = ? AND kind = 'note'", (n.name, n.text, note_id)
+    )
     return {"ok": True}
 
 
