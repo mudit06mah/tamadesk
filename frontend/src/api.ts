@@ -33,7 +33,8 @@ export type AskEvent =
   | { type: 'error'; text: string }
 export type Usage = { usd: number; tokens: number; runs: number; daily_usd: number; max_usd_per_ask: number; model: string; effort: string }
 export type GhRow = { title: string; url: string; number: number; repo: string; updated_at: string; draft: boolean; review: string | null; checks: string | null; comments: number; author: string | null }
-export type GitHubStatus = { error?: string; login?: string; prs?: GhRow[]; issues?: GhRow[]; reviews?: GhRow[] }
+export type GhRepo = { repo: string; url: string; pushed_at: string; stars: number; open_issues: number }
+export type GitHubStatus = { error?: string; login?: string; prs?: GhRow[]; issues?: GhRow[]; reviews?: GhRow[]; shipped?: GhRow[]; repos?: GhRepo[] }
 export type MemHit = { day: string; kind: string; text: string; ref: string }
 export type MemDay = { day: string; things: number; chats: { id: number; title: string }[]; summary: string | null; facts: string[] }
 export type Doc = { id: number; name: string; kind: string; chars: number; created_at: string }
@@ -56,7 +57,6 @@ export type Template = { key: string; title: string; blurb: string; icon: string
 export type ModItem = {
   id: number
   module: string
-  module_name?: string
   source: string
   title: string
   subtitle: string | null
@@ -126,12 +126,11 @@ export const api = {
   deleteModule: (id: string) => call(`/modules/${id}`, { method: 'DELETE' }),
   runModule: (id: string) => post(`/modules/${id}/run`),
   items: (id: string, status: string, offset = 0) => call<{ items: ModItem[]; has_more: boolean }>(`/modules/${id}/items?status=${status}&offset=${offset}`),
-  picks: () => call<ModItem[]>('/picks'),
   act: (itemId: number, action: 'save' | 'skip' | 'done' | 'undo', reason = '') => post<{ status: string; xp: number }>(`/items/${itemId}/${action}`, { reason }),
   itemTodo: (itemId: number) => post<{ todo_id: number }>(`/items/${itemId}/todo`),
   summarize: (itemId: number) => post<{ summary: string; why_you: string }>(`/items/${itemId}/summarize`),
   capture: (text: string) =>
-    post<{ kind: 'todo' | 'reminder' | 'log'; id: number; text: string; due_at: string | null; xp: number }>('/capture', { text }),
+    post<{ kind: 'todo' | 'reminder' | 'log'; id: number; text: string; due_at: string | null; xp: number; no_time: boolean }>('/capture', { text }),
   todo: (id: number, action: 'done' | 'undo' | 'drop') => post<{ ok: boolean; xp: number }>(`/todos/${id}/${action}`),
   dismiss: (id: number) => post<{ ok: boolean; xp: number }>(`/reminders/${id}/dismiss`),
   log: (offset: number) => call<{ items: LogEntry[]; has_more: boolean }>(`/log?offset=${offset}`),

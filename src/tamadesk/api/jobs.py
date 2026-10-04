@@ -107,6 +107,8 @@ def run_module(module_id: str) -> None:
     try:
         r = engine.run(conn, m)
         log.info("module %s: +%d items %s", module_id, r["added"], r["errors"] or "")
+        if m.notify and r["added"]:
+            notify(m.name, f"{r['added']} new")
     finally:
         conn.close()
 
@@ -132,10 +134,9 @@ def run_now(module_id: str) -> None:
 
 def start(s: Settings) -> None:
     global _sched
-    _sched = BackgroundScheduler(
-        executors={"default": ThreadPoolExecutor(2)}
-    )  # local tz: recap_hour is yours
-    _sched.add_job(ring_due, "interval", seconds=20, id="ring", **ONCE)
+    # local tz (recap_hour is yours); fetches share 2 threads, reminders get their own so they're never late
+    _sched = BackgroundScheduler(executors={"default": ThreadPoolExecutor(2), "ring": ThreadPoolExecutor(1)})
+    _sched.add_job(ring_due, "interval", seconds=20, id="ring", executor="ring", **ONCE)
     _sched.add_job(evening_recap, "cron", hour=s.day.recap_hour, minute=0, id="recap", **ONCE)
     _sched.add_job(memory_catch_up, "cron", hour=3, minute=30, id="memory", **ONCE)
     _sched.add_job(memory_catch_up, id="memory-boot", next_run_time=datetime.now().astimezone() + timedelta(minutes=2),

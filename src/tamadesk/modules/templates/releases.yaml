@@ -1,0 +1,12 @@
+title: Release radar
+blurb: New releases of the tools you use, or of everything you've starred on GitHub, in one feed.
+icon: star
+params:
+  repos: {label: "Repos (owner/name, comma separated) or 'starred'", default: "starred"}
+module:
+  name: Releases
+  icon: star
+  every: 6h
+  sources:
+    - {type: releases, repos: "${repos}"}
+  actions: [save, skip, summarize, open]

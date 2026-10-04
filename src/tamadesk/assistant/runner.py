@@ -75,10 +75,11 @@ How you work:
 
 
 def command(s: Settings, *, prompt: str, system: str, budget: float, resume: str | None = None,
-            stream: bool = True, schema: dict | None = None, model: str | None = None) -> list[str]:  # fmt: skip
+            stream: bool = True, schema: dict | None = None, model: str | None = None,
+            allowed: list[str] | None = None) -> list[str]:  # fmt: skip
     cmd = ["claude", "-p", prompt, "--model", model or s.assistant.model, "--effort", s.assistant.effort,
            "--append-system-prompt", system, "--mcp-config", mcp_config(s), "--strict-mcp-config",
-           "--tools", "WebFetch", "--allowedTools", ",".join(ALLOWED + [f"mcp__{n}" for n in reach_servers(s)]),
+           "--tools", "WebFetch", "--allowedTools", ",".join(allowed or ALLOWED + [f"mcp__{n}" for n in reach_servers(s)]),
            "--permission-mode", "dontAsk", "--max-budget-usd", f"{budget:.2f}"]  # fmt: skip
     if stream:
         cmd += ["--output-format", "stream-json", "--verbose", "--include-partial-messages"]
@@ -136,12 +137,19 @@ def stream(s: Settings, cmd: list[str]) -> Iterator[dict]:
             proc.kill()
 
 
+# what an unattended run (a scheduled agent tab) may use: look things up, never change the desk
+READ_ONLY = ["mcp__tamadesk__search", "mcp__tamadesk__read_page", "WebFetch"]
+
+
 def structured(
-    s: Settings, conn: sqlite3.Connection, prompt: str, schema: dict, *, kind: str, budget: float
-) -> dict:
-    """One non-streaming run with tools that returns JSON (used by 'agent' tab sources)."""
+    s: Settings, conn: sqlite3.Connection, prompt: str, schema: dict, *, kind: str, budget: float,
+    read_only: bool = False,
+) -> dict:  # fmt: skip
+    """One non-streaming run with tools that returns JSON (agent tab sources, mail redrafts)."""
     check_budget(s, conn)
-    cmd = command(s, prompt=prompt, system=system_prompt(s, conn), budget=budget, stream=False, schema=schema)
+    allowed = READ_ONLY + [f"mcp__{n}" for n in reach_servers(s)] if read_only else None
+    cmd = command(s, prompt=prompt, system=system_prompt(s, conn), budget=budget, stream=False, schema=schema,
+                  allowed=allowed)  # fmt: skip
     proc = subprocess.run(cmd, cwd=s.home, env=_env(), stdin=subprocess.DEVNULL, capture_output=True, text=True,
                           timeout=600, check=False)  # fmt: skip
     raw = json.loads(proc.stdout or "{}")

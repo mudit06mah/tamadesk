@@ -80,6 +80,7 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
         const r = await api.capture(t.replace(/^\s*(log\b|>)\s*/i, ''))
         fx.sound('capture')
         fx.float(document.querySelector('.ask-box'), r.kind === 'log' ? `+${r.xp} XP` : r.kind === 'todo' ? '+ todo' : 'reminder set')
+        if (r.no_time) notify("Couldn't find a time in that, so it's a todo. Try “in 10 minutes” or “at 6pm”.", 'err')
         onChange()
         return
       }

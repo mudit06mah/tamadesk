@@ -1,0 +1,12 @@
+title: Issues to pick up
+blurb: Fresh good-first-issues in your languages, or new issues on your own repos to triage.
+icon: target
+params:
+  query: {label: "GitHub issue search", default: "label:\"good first issue\" language:python"}
+module:
+  name: Issues
+  icon: target
+  every: daily 09:30
+  sources:
+    - {type: github_issues, query: "${query}"}
+  actions: [save, skip, todo, open]

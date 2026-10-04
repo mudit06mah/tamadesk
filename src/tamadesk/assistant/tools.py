@@ -9,11 +9,12 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 from tamadesk.core import db
 from tamadesk.core.config import Settings
 from tamadesk.core.net import fetch, get_json
-from tamadesk.life import actions, capture, docs, github
+from tamadesk.life import actions, capture, docs, github, memory
 from tamadesk.modules import rank, sources, spec
 
 FEEDS = sorted(k for k in sources.SOURCES if k != "agent")
@@ -31,6 +32,21 @@ def tool(name: str, description: str, props: dict, required: list[str] | None = 
 
 
 S = {"type": "string"}
+
+
+def _local(utc_naive) -> str:
+    return utc_naive.replace(tzinfo=UTC).astimezone().strftime("%a %d %b %H:%M")
+
+
+def _local_ts(ts: str | None) -> str | None:
+    return _local(datetime.fromisoformat(ts)) if ts else None
+
+
+def _tab(s: Settings, ref: str) -> spec.Module | None:
+    """A tab by id or by its display name."""
+    return spec.get(s, ref) or next(
+        (m for m in spec.load_all(s) if m.name.lower() == ref.strip().lower()), None
+    )
 
 
 def _short(it: sources.Item) -> dict:
@@ -64,13 +80,26 @@ def list_tabs(s: Settings, conn: sqlite3.Connection) -> list[dict]:
 @tool("create_tab", "Create a tab that refreshes on its own. Prefer several precise sources over one vague one. "
       "Use source type 'agent' {task} only when no feed/search can express the need (it costs tokens per run). "
       "icon: book|news|code|target|eye|play|pen|star. "
-      "every: 30m|6h|7d|'daily HH:MM'. actions from: save, skip, open, summarize, todo, draft.",
+      "every: 30m|6h|7d|'daily HH:MM'. actions from: save, skip, open, summarize, todo, draft. "
+      "notify: true pings the desktop when something new arrives (status pages, launches, releases).",
       {"name": S, "icon": S, "every": S,
        "sources": {"type": "array", "items": {"type": "object"}}, "interests": {"type": "array", "items": S},
-       "actions": {"type": "array", "items": S}},
+       "actions": {"type": "array", "items": S}, "notify": {"type": "boolean"}},
       ["name", "sources"])  # fmt: skip
-def create_tab(s: Settings, conn: sqlite3.Connection, **kw) -> dict:
+def create_tab(s: Settings, conn: sqlite3.Connection, **kw) -> dict | str:
     m = spec.Module(**{"id": spec.slug(kw["name"])} | kw)  # validated here, so errors come back to the model
+    # try every source once before saving, so a dead feed (401s, empty queries) is fixed now, not found later
+    problems = []
+    for src in m.sources:
+        if src.type == "agent":
+            continue  # costs tokens on every run; trust it
+        try:
+            if not sources.fetch(src.model_dump()):
+                problems.append(f"{src.model_dump()} returned nothing")
+        except Exception as e:  # noqa: BLE001 - reported back so the model can pick another source
+            problems.append(f"{src.model_dump()} failed: {str(e)[:160]}")
+    if problems:
+        return "not created, these sources don't work, replace them and try again:\n" + "\n".join(problems)
     # the desk's own API installs it, so the running scheduler picks it up and fills it now
     return get_json(
         f"http://{s.server.host}:{s.server.port}/api/modules/spec", body=m.model_dump(), timeout=15
@@ -91,7 +120,7 @@ def delete_tab(s: Settings, conn: sqlite3.Connection, tab: str) -> str:
       {"tab": S, "items": {"type": "array", "items": {"type": "object", "properties":
        {"title": S, "url": S, "subtitle": S, "body": S}, "required": ["title"]}}})  # fmt: skip
 def add_to_tab(s: Settings, conn: sqlite3.Connection, tab: str, items: list[dict]) -> str:
-    m = spec.get(s, tab)
+    m = _tab(s, tab)
     if m is None:
         return f"no tab {tab!r}; create it first"
     n = 0
@@ -99,7 +128,9 @@ def add_to_tab(s: Settings, conn: sqlite3.Connection, tab: str, items: list[dict
         sc, why = rank.score(conn, m.id, f"{i['title']} {i.get('body', '')}", m.interests)
         n += conn.execute(
             """INSERT INTO items (module, ext_id, source, title, subtitle, body, url, score, why)
-               VALUES (?, ?, 'bolt', ?, ?, ?, ?, ?, ?) ON CONFLICT(module, ext_id) DO NOTHING""",
+               SELECT ?, ?, 'bolt', ?, ?, ?, ?, ?, ? WHERE NOT EXISTS
+                   (SELECT 1 FROM items WHERE module = ?1 AND url = ?6 AND url != '')
+               ON CONFLICT(module, ext_id) DO NOTHING""",
             (m.id, sources.uid(i.get("url") or i["title"]), i["title"], i.get("subtitle", ""), i.get("body", ""),
              i.get("url", ""), sc + 1, json.dumps(why)),
         ).rowcount  # fmt: skip
@@ -110,9 +141,12 @@ def add_to_tab(s: Settings, conn: sqlite3.Connection, tab: str, items: list[dict
       {"tab": S, "status": {"enum": ["new", "saved"]}, "limit": {"type": "integer"}}, ["tab"])  # fmt: skip
 def tab_items(
     s: Settings, conn: sqlite3.Connection, tab: str, status: str = "new", limit: int = 10
-) -> list[dict]:
+) -> list[dict] | str:
+    m = _tab(s, tab)
+    if m is None:
+        return f"no tab {tab!r}"
     rows = conn.execute("SELECT id, title, url, subtitle, body FROM items WHERE module = ? AND status = ? "
-                        "ORDER BY score DESC LIMIT ?", (tab, status, limit)).fetchall()  # fmt: skip
+                        "ORDER BY score DESC LIMIT ?", (m.id, status, limit)).fetchall()  # fmt: skip
     return [dict(r) | {"body": (r["body"] or "")[:200]} for r in rows]
 
 
@@ -126,7 +160,29 @@ def add_todo(s: Settings, conn: sqlite3.Connection, title: str, due: str = "") -
     c = capture.parse(f"todo {title} {due}".strip())
     with db.transaction(conn):
         actions.add_todo(conn, c.text, capture.sql_ts(c.due_at) if c.due_at else None)
-    return "added" + (f", due {c.due_at:%a %H:%M} UTC" if c.due_at else "")
+    return "added" + (f", due {_local(c.due_at)}" if c.due_at else "")
+
+
+@tool("list_todos", "The user's open todos (with due times) and what they finished today.", {}, [])
+def list_todos(s: Settings, conn: sqlite3.Connection) -> dict:
+    from tamadesk.api.routes import day_start_utc
+
+    open_ = conn.execute(
+        "SELECT id, title, due_at FROM todos WHERE status = 'open' ORDER BY due_at IS NULL, due_at, id"
+    )
+    done = conn.execute(
+        "SELECT id, title FROM todos WHERE status = 'done' AND done_at >= ?", (day_start_utc(),)
+    )
+    return {
+        "open": [dict(r) | {"due": _local_ts(r["due_at"])} for r in open_],
+        "done_today": [dict(r) for r in done],
+    }
+
+
+@tool("complete_todo", "Mark one of the user's todos done (by id from list_todos), when they say they finished it.",
+      {"id": {"type": "integer"}})  # fmt: skip
+def complete_todo(s: Settings, conn: sqlite3.Connection, id: int) -> str:
+    return "done" if actions.complete_todo(conn, id) else f"no open todo #{id}"
 
 
 @tool("set_reminder", "Ring the user at a time ('in 20 min', 'tomorrow 9am').", {"text": S, "when": S})
@@ -136,7 +192,7 @@ def set_reminder(s: Settings, conn: sqlite3.Connection, text: str, when: str) ->
         return f"couldn't understand the time {when!r}"
     with db.transaction(conn):
         actions.add_reminder(conn, c.text, capture.sql_ts(c.due_at))
-    return f"reminder set for {c.due_at:%a %d %b %H:%M} UTC"
+    return f"reminder set for {_local(c.due_at)} (the user's local time)"
 
 
 @tool("log", "Add a line to the user's daily log.", {"text": S})
@@ -144,6 +200,22 @@ def log(s: Settings, conn: sqlite3.Connection, text: str) -> str:
     with db.transaction(conn):
         actions.add_log(conn, text)
     return "logged"
+
+
+@tool("recall", "Search the user's memory: every past chat, log line, todo, email and saved item, plus daily "
+      "digests and facts. For questions about the past ('what was that…', 'when did I…'). Search with several "
+      "alternative words and broader categories at once (e.g. 'japanese dish food sushi ramen restaurant'); "
+      "dates are YYYY-MM-DD.",
+      {"query": S, "since": S, "until": S}, ["query"])  # fmt: skip
+def recall(s: Settings, conn: sqlite3.Connection, query: str, since: str = "", until: str = "") -> list[dict]:
+    memory.sync_files(s, conn)
+    return memory.search(conn, query, since=since, until=until)
+
+
+@tool("day_notes", "Everything from one day (YYYY-MM-DD): its digest, facts and raw history.", {"day": S})
+def day_notes(s: Settings, conn: sqlite3.Connection, day: str) -> dict:
+    memory.sync_files(s, conn)
+    return memory.day_notes(conn, day)
 
 
 @tool(
@@ -155,8 +227,14 @@ def read_doc(s: Settings, conn: sqlite3.Connection, ref: str) -> str:
     return docs.read(conn, ref) or f"no document {ref!r}"
 
 
+@tool("repo_info", "Health of a public GitHub repo (owner/name): stars, last push, open issues, license, archived, "
+      "latest release. Use it to compare tools or check if something is maintained.", {"repo": S})  # fmt: skip
+def repo_info(s: Settings, conn: sqlite3.Connection, repo: str) -> dict:
+    return sources.repo_info(repo.strip().removeprefix("https://github.com/").strip("/"))
+
+
 @tool("github_status", "The user's open GitHub work: their PRs (review decision, CI checks), issues assigned to "
-      "them, and PRs waiting for their review.", {}, [])  # fmt: skip
+      "them, PRs waiting for their review, PRs merged in the last week, and their own repos by last push.", {}, [])  # fmt: skip
 def github_status(s: Settings, conn: sqlite3.Connection) -> dict:
     return github.status()
 

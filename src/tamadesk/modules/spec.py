@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from tamadesk.core.config import Settings
 
@@ -19,6 +20,31 @@ SCHEDULE_RE = re.compile(r"^(?:(\d+)([mhd])|daily (\d{1,2}):(\d{2}))$")
 class Source(BaseModel, extra="allow"):
     type: str  # a key of sources.SOURCES; the rest of the fields are that source's params
 
+    @model_validator(mode="before")
+    @classmethod
+    def _flatten(cls, v):
+        # the assistant's search tool takes {type, params: {...}}; tabs take the params inline
+        if isinstance(v, dict) and isinstance(v.get("params"), dict):
+            v = {k: x for k, x in v.items() if k != "params"} | v["params"]
+        return v
+
+    @model_validator(mode="after")
+    def _known(self):
+        from tamadesk.modules.sources import SOURCES
+
+        fn = SOURCES.get(self.type)
+        if fn is None:
+            raise ValueError(f"unknown source type {self.type!r}; use one of {', '.join(sorted(SOURCES))}")
+        params = inspect.signature(fn).parameters
+        if any(p.kind is p.VAR_KEYWORD for p in params.values()):
+            return self
+        allowed = set(params)
+        if bad := set(self.model_extra or {}) - allowed:
+            raise ValueError(
+                f"{self.type} doesn't take {', '.join(sorted(bad))}; it takes {', '.join(sorted(allowed))}"
+            )
+        return self
+
 
 class Module(BaseModel):
     id: str = Field(pattern=r"^[a-z0-9-]{1,32}$")
@@ -29,6 +55,7 @@ class Module(BaseModel):
     interests: list[str] = []  # words that rank items up from day one
     actions: list[Action] = ["save", "skip", "open"]
     keep: int = Field(default=150, ge=10, le=1000)  # most unseen items kept per module
+    notify: bool = False  # a desktop notification when a refresh brings something new
 
     @field_validator("every")
     @classmethod
@@ -36,6 +63,17 @@ class Module(BaseModel):
         if not SCHEDULE_RE.match(v.strip()):
             raise ValueError("use 30m, 6h, 7d or 'daily 08:00'")
         return v.strip()
+
+    @model_validator(mode="after")
+    def _agent_not_too_often(self):
+        # an agent source is a Claude run on every refresh: no faster than every 6 hours
+        kind, kw = trigger(self.every)
+        if any(x.type == "agent" for x in self.sources) and kind == "interval" and kw.get("minutes", 0) + \
+                kw.get("hours", 0) * 60 < 360 and "days" not in kw:  # fmt: skip
+            raise ValueError(
+                "tabs with an 'agent' source can refresh at most every 6h (it costs tokens each time)"
+            )
+        return self
 
 
 def trigger(every: str) -> tuple[str, dict]:

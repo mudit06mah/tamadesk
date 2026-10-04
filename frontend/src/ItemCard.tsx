@@ -51,21 +51,19 @@ export function ItemCard({
   run,
   busy,
   summary,
-  compact,
 }: {
   it: ModItem
   mod: Pick<Mod, 'actions'>
   run: (it: ModItem, a: Act, el: Element | null) => void
   busy: boolean
   summary?: ModItem['data']['summary']
-  compact?: boolean
 }) {
   const sum = summary ?? it.data.summary
   const acts = mod.actions.filter((a): a is Act => a !== 'open' && (it.status === 'new' || (a !== 'save' && a !== 'skip')))
   return (
-    <div className={`item ${compact ? 'compact' : ''}`}>
+    <div className="item">
       <div className="item-top">
-        <span className="tag">{it.module_name ?? it.source}</span>
+        <span className="tag">{it.source}</span>
         {it.why.map((w) => (
           <span key={w} className="why" title="why it ranked up">
             {w}
@@ -86,7 +84,7 @@ export function ItemCard({
           {sum.why_you && <p className="muted">→ {sum.why_you}</p>}
         </motion.div>
       ) : (
-        it.body && !compact && <p className="item-body">{it.body}</p>
+        it.body && <p className="item-body">{it.body}</p>
       )}
       <div className="item-acts">
         {acts.map((a) => (

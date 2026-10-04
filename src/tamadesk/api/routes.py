@@ -187,12 +187,10 @@ def todo_action(tid: int, action: Literal["done", "undo", "drop"], conn: Conn) -
     if not row:
         raise HTTPException(404, "no such todo")
     xp = 0
+    if action == "done":
+        return {"ok": True, "xp": game.XP["todo_done"] if actions.complete_todo(conn, tid) else 0}
     with db.transaction(conn):
-        if action == "done" and row["status"] == "open":
-            conn.execute("UPDATE todos SET status = 'done', done_at = datetime('now') WHERE id = ?", (tid,))
-            xp = game.XP["todo_done"]
-            db.event(conn, "todo_done", ref_id=tid, detail=row["title"], xp=xp)
-        elif action == "undo" and row["status"] != "open":
+        if action == "undo" and row["status"] != "open":
             conn.execute("UPDATE todos SET status = 'open', done_at = NULL WHERE id = ?", (tid,))
             # take back the XP so undo can't be farmed
             if row["status"] == "done":

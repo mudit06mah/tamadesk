@@ -14,6 +14,16 @@ def add_todo(conn: sqlite3.Connection, title: str, due: str | None = None) -> in
     return rid
 
 
+def complete_todo(conn: sqlite3.Connection, todo_id: int) -> bool:
+    row = conn.execute("SELECT title FROM todos WHERE id = ? AND status = 'open'", (todo_id,)).fetchone()
+    if row is None:
+        return False
+    with db.transaction(conn):
+        conn.execute("UPDATE todos SET status = 'done', done_at = datetime('now') WHERE id = ?", (todo_id,))
+        db.event(conn, "todo_done", ref_id=todo_id, detail=row["title"], xp=game.XP["todo_done"])
+    return True
+
+
 def add_reminder(conn: sqlite3.Connection, text: str, due: str) -> int:
     rid = conn.execute("INSERT INTO reminders (text, due_at) VALUES (?, ?)", (text, due)).lastrowid
     db.event(conn, "reminder_set", ref_id=rid, detail=text)
@@ -37,7 +47,7 @@ def capture_text(conn: sqlite3.Connection, text: str) -> dict:
             rid, xp = add_reminder(conn, c.text, due), 0
         else:
             rid, xp = add_log(conn, c.text), game.XP["logged"]
-    return {"kind": c.kind, "id": rid, "text": c.text, "due_at": due, "xp": xp}
+    return {"kind": c.kind, "id": rid, "text": c.text, "due_at": due, "xp": xp, "no_time": c.no_time}
 
 
 def add_draft(conn: sqlite3.Connection, *, ask: str, subject: str, body: str, to_name: str = "",

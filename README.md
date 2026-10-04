@@ -51,6 +51,16 @@ first?".
 - Add your resume or a product brief (PDF, .md, .txt). Bolt reads them only when a task needs
   them, so they cost nothing otherwise.
 
+**For developers:**
+- A **Release radar** for many repos, or everything you've starred.
+- **Issues to pick up:** good-first-issues, or triage of your own repos.
+- **Show HN watching.**
+- **Desktop pings** when a tab gets something new.
+- Ask Bolt "is X still maintained?", "what did I ship this week?" or "which side projects did I
+  abandon?".
+
+See [docs/use-cases.md](docs/use-cases.md).
+
 **Themes:** twelve palettes, from lavender paper and sakura to Game Boy, amber CRT and midnight
 neon.
 

@@ -287,7 +287,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
       <main className="screen">
         <AnimatePresence mode="wait">
           <motion.div key={page} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
-            {(page === 'today' || (page.startsWith('m:') && !mod)) && <Today state={state} refresh={refresh} notify={notify} go={go} />}
+            {(page === 'today' || (page.startsWith('m:') && !mod)) && <Today state={state} refresh={refresh} notify={notify} />}
             {mod && <ModulePage key={mod.id} mod={mod} notify={notify} onChange={refresh} onDeleted={() => (go('today'), void refresh())} />}
             {page === 'memory' && <Memory notify={notify} />}
             {page === 'mail' && <Mail notify={notify} onChange={refresh} />}

@@ -35,7 +35,9 @@ def run(conn: sqlite3.Connection, m: Module) -> dict:
             s, why = rank.score(conn, m.id, f"{it.title} {it.body}", m.interests)
             cur = conn.execute(
                 """INSERT INTO items (module, ext_id, source, title, subtitle, body, url, data, score, why, published_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(module, ext_id) DO NOTHING""",
+                   SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE NOT EXISTS
+                       (SELECT 1 FROM items WHERE module = ?1 AND url = ?7 AND url != '')
+                   ON CONFLICT(module, ext_id) DO NOTHING""",
                 (m.id, it.ext_id, spec.type, it.title, it.subtitle, it.body, it.url, json.dumps(it.data),
                  s, json.dumps(why), it.published),
             )  # fmt: skip

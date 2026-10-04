@@ -7,6 +7,7 @@ import { type ChatMsg, type Step } from './api'
 import { FREE, useAsk } from './AskStore'
 import { Companion, useCompanion, type Mood } from './Companion'
 import { useFx } from './fx/Fx'
+import { FlameIcon } from './icons'
 import { Markdown } from './Markdown'
 import { Bar } from './ui'
 
@@ -54,12 +55,14 @@ export function AskPanel({
   mood,
   interests,
   level,
+  stats,
   cheer: outerCheer = 0,
 }: {
   greeting: string
   mood: Mood
   interests: string
   level: { level: number; xp: number; into: number; need: number }
+  stats: { done: number; goal: number; streak: number }
   cheer?: number
 }) {
   const fx = useFx()
@@ -100,6 +103,16 @@ export function AskPanel({
           <div className="lv-mini" title={`${level.xp} XP · ${level.need - level.into} to next level`}>
             <b>LV {level.level}</b>
             <Bar value={level.into / Math.max(1, level.need)} label="XP to next level" />
+          </div>
+          <div className="ask-stats">
+            <span className={`pill ${stats.done >= stats.goal ? 'hit' : ''}`} title="todos done today / daily goal">
+              ✓ {stats.done}/{stats.goal}
+            </span>
+            {stats.streak > 0 && (
+              <span className="pill" title="days in a row">
+                <FlameIcon /> {stats.streak}d
+              </span>
+            )}
           </div>
         </div>
         <div className="ask-main">

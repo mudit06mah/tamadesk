@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from html import unescape
 
 from tamadesk.core.net import get_json, get_text
@@ -103,9 +104,10 @@ def arxiv(query: str, limit: int = 20) -> list[Item]:
 
 
 @source("hn")
-def hn(query: str = "", min_points: int = 30, limit: int = 30) -> list[Item]:
-    """Hacker News stories (Algolia API). No query = what's hot on the front page."""
-    params = {"tags": "story", "hitsPerPage": limit, "numericFilters": f"points>{min_points}"}
+def hn(query: str = "", min_points: int = 30, limit: int = 30, tags: str = "story") -> list[Item]:
+    """Hacker News (Algolia API). No query = the front page. tags: story | show_hn | ask_hn.
+    Use min_points 0 to catch brand-new posts (e.g. watching for your own launch)."""
+    params = {"tags": tags, "hitsPerPage": limit, "numericFilters": f"points>={min_points}"}
     url = "https://hn.algolia.com/api/v1/search_by_date" if query else "https://hn.algolia.com/api/v1/search"
     if query:
         # comma-separated topics: any of them may match
@@ -122,6 +124,18 @@ def hn(query: str = "", min_points: int = 30, limit: int = 30) -> list[Item]:
     ) for h in hits if h.get("title")]  # fmt: skip
 
 
+@lru_cache(maxsize=1)
+def _gh_token() -> str:
+    if not shutil.which("gh"):
+        return ""
+    p = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=10, check=False)
+    return p.stdout.strip() if p.returncode == 0 else ""
+
+
+def _gh_headers() -> dict:
+    return {"Authorization": f"Bearer {t}"} if (t := _gh_token()) else {}
+
+
 @source("github")
 def github(query: str, days: int = 30, limit: int = 20) -> list[Item]:
     """Repos created in the last `days` days, most-starred first (unauthenticated GitHub search API).
@@ -131,7 +145,7 @@ def github(query: str, days: int = 30, limit: int = 20) -> list[Item]:
     for q in re.split(r"\s+OR\s+", query)[:4]:
         data = get_json("https://api.github.com/search/repositories", params={
             "q": f"{q} created:>{since}", "sort": "stars", "order": "desc", "per_page": limit,
-        })  # fmt: skip
+        }, headers=_gh_headers())  # fmt: skip
         seen |= {r["id"]: r for r in data.get("items", []) if r["id"] not in seen}
     repos = sorted(seen.values(), key=lambda r: -r["stargazers_count"])[:limit]
     return [Item(
@@ -140,6 +154,61 @@ def github(query: str, days: int = 30, limit: int = 20) -> list[Item]:
         body=clean(r.get("description") or ""), published=r.get("created_at", ""),
         data={"topics": r.get("topics", [])},
     ) for r in repos]  # fmt: skip
+
+
+def _starred(limit: int) -> list[str]:
+    data = get_json("https://api.github.com/user/starred", params={"per_page": limit, "sort": "updated"},
+                    headers=_gh_headers())  # fmt: skip
+    return [r["full_name"] for r in data] if isinstance(data, list) else []
+
+
+@source("releases")
+def releases(repos: str, limit: int = 20) -> list[Item]:
+    """New releases of many repos in one source: 'owner/a, owner/b' or 'starred' (your GitHub stars,
+    via your gh login). Uses each repo's public releases.atom feed."""
+    names = _starred(30) if repos.strip() == "starred" else [r.strip() for r in repos.split(",") if r.strip()]
+    out: list[Item] = []
+    for name in names[:30]:
+        try:
+            feed = parse_feed(get_text(f"https://github.com/{name}/releases.atom"), 3)
+        except Exception:  # noqa: BLE001, S112 - a repo without releases (or renamed) just has none
+            continue
+        out += [Item(ext_id=i.ext_id, title=f"{name.split('/')[-1]} {i.title}", url=i.url, subtitle=name,
+                     body=i.body, published=i.published) for i in feed]  # fmt: skip
+    return sorted(out, key=lambda i: i.published, reverse=True)[:limit]
+
+
+@source("github_issues")
+def github_issues(query: str, days: int = 14, limit: int = 20) -> list[Item]:
+    """Open issues/PRs from GitHub search, updated recently. e.g. 'label:"good first issue" language:rust'
+    or 'repo:me/mylib no:label' for triage. OR between alternatives is allowed."""
+    since = (datetime.now(UTC) - timedelta(days=days)).date().isoformat()
+    seen: dict[int, dict] = {}
+    for q in re.split(r"\s+OR\s+", query)[:4]:
+        data = get_json("https://api.github.com/search/issues", params={
+            "q": f"{q} is:open updated:>{since}", "sort": "updated", "order": "desc", "per_page": limit,
+        }, headers=_gh_headers())  # fmt: skip
+        seen |= {i["id"]: i for i in data.get("items", []) if i["id"] not in seen}
+    return [Item(
+        ext_id=f"ghi{i['id']}", title=i["title"], url=i["html_url"],
+        subtitle=f"{i['repository_url'].split('repos/')[-1]}#{i['number']} · " + ", ".join(l["name"] for l in i.get("labels", [])[:3]),
+        body=clean(i.get("body") or "", 300), published=i.get("updated_at", ""),
+    ) for i in list(seen.values())[:limit]]  # fmt: skip
+
+
+def repo_info(repo: str) -> dict:
+    """Health of one public repo: stars, last push, open issues, license, archived, latest release."""
+    h = _gh_headers()
+    r = get_json(f"https://api.github.com/repos/{repo}", headers=h)
+    try:
+        rel = get_json(f"https://api.github.com/repos/{repo}/releases/latest", headers=h)
+    except Exception:  # noqa: BLE001 - no releases is a normal answer
+        rel = {}
+    return {"repo": r["full_name"], "description": r.get("description"), "stars": r["stargazers_count"],
+            "forks": r["forks_count"], "open_issues": r["open_issues_count"], "pushed_at": r["pushed_at"],
+            "created_at": r["created_at"], "license": (r.get("license") or {}).get("spdx_id"),
+            "archived": r["archived"], "language": r.get("language"), "topics": r.get("topics", []),
+            "latest_release": {"tag": rel.get("tag_name"), "at": rel.get("published_at")} if rel else None}  # fmt: skip
 
 
 # ---------------------------------------------------------------- agent-reach (login-free channels)
@@ -205,7 +274,7 @@ def agent(task: str, limit: int = 8) -> list[Item]:
     try:
         out = runner.structured(s, conn, f"Find up to {limit} fresh, specific results for this standing request, "
                                 f"using the search tool. Return only items, no commentary.\nRequest: {task}",
-                                schema, kind="agent_tab", budget=min(0.3, s.assistant.max_usd_per_ask))  # fmt: skip
+                                schema, kind="agent_tab", budget=min(0.3, s.assistant.max_usd_per_ask), read_only=True)  # fmt: skip
     finally:
         conn.close()
     return [Item(ext_id=uid(i["url"]), title=clean(i["title"], 200), url=i["url"], subtitle=i.get("subtitle", ""),

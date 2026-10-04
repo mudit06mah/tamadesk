@@ -18,9 +18,13 @@ from dateparser.search import search_dates
 TODO_RE = re.compile(r"^\s*(?:todo\b[:\s]*|t:\s*|\[\s?\]\s*|-\s*\[\s?\]\s*)", re.IGNORECASE)
 REMIND_RE = re.compile(r"^\s*remind\s+me\s+(?:to\s+)?", re.IGNORECASE)
 # dateparser happily reads "a", "to" or "me" as dates; only accept matches that look like times
+# a phrase only counts as a time if it looks like one: a bare number ("PR 4521") does not
 TIMEY = re.compile(
-    r"\d|\b(?:today|tonight|tomorrow|noon|midnight|morning|evening|afternoon|week|"
-    r"mon|tue|wed|thu|fri|sat|sun)\w*\b",
+    r"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\b\d{1,2}:\d{2}\b"  # 6pm, 9:30, 18:00
+    r"|\b\d+\s*(?:minutes?|hours?|days?|weeks?|months?)\b"  # in 20 minutes
+    r"|\b\d{1,2}(?:st|nd|rd|th)\b|\b\d{1,2}[/.-]\d{1,2}\b"  # the 5th, 10/12
+    r"|\b(?:today|tonight|tomorrow|noon|midnight|morning|evening|afternoon|next week|this week|weekend"
+    r"|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|mon|tue|wed|thu|fri|sat|sun)\w*\b",
     re.IGNORECASE,
 )
 
@@ -30,9 +34,27 @@ class Capture:
     kind: str  # todo | reminder | log
     text: str
     due_at: datetime | None = None  # naive UTC
+    no_time: bool = False  # asked for a reminder but no time was found, so it became a todo
+
+
+# phrasings people use that the date parser doesn't know: "after a minute", "half an hour", "in an hour"
+NORMALIZE = [
+    (re.compile(r"\bhalf an? hour\b", re.IGNORECASE), "30 minutes"),
+    (re.compile(r"\ban? (minute|min|hour|hr|day|week)\b", re.IGNORECASE), r"1 \1"),
+    (re.compile(r"\b(?:after|within)\s+(?=\d)", re.IGNORECASE), "in "),
+    (re.compile(r"\b(\d+)\s*(mins?|m)\b", re.IGNORECASE), r"\1 minutes"),
+    (re.compile(r"\b(\d+)\s*(hrs?|h)\b", re.IGNORECASE), r"\1 hours"),
+]
+
+
+def _normalize(text: str) -> str:
+    for rx, rep in NORMALIZE:
+        text = rx.sub(rep, text)
+    return text
 
 
 def _find_time(text: str, now: datetime) -> tuple[str, datetime | None]:
+    text = _normalize(text)
     found = search_dates(
         text,
         languages=["en"],
@@ -53,7 +75,7 @@ def parse(text: str, now: datetime | None = None) -> Capture:
     text = text.strip()
     if m := REMIND_RE.match(text):
         rest, when = _find_time(text[m.end() :], now)
-        return Capture("reminder" if when else "todo", rest or text, _to_utc(when))
+        return Capture("reminder" if when else "todo", rest or text, _to_utc(when), no_time=when is None)
     if m := TODO_RE.match(text):
         rest, when = _find_time(text[m.end() :], now)
         return Capture("todo", rest or text[m.end() :].strip(), _to_utc(when))

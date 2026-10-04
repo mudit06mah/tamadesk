@@ -501,12 +501,6 @@ kbd {
   grid-column: span 7;
 }
 
-.stat-tiles {
-  grid-column: span 12;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 26px;
-}
 
 .w-goals {
   grid-column: span 7;
@@ -641,36 +635,9 @@ kbd {
   margin-bottom: 6px;
 }
 
-.stat-tile {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 118px;
-  padding: 14px 16px;
-  background: var(--win);
-  border: 2px solid var(--line);
-  border-radius: var(--r);
-  box-shadow: var(--shadow);
-  font-size: 40px;
-}
 
-.stat-tile.inverse {
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
-}
 
-.stat-tile.inverse .seg-ghost {
-  opacity: 0.18;
-}
 
-.stat-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 15px;
-  font-weight: 500;
-}
 
 .goal-line {
   margin-bottom: 14px;
@@ -1049,26 +1016,9 @@ kbd {
 
 
 
-.stat-col {
-  grid-column: span 5;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
-}
 
-.stat-col .stat-tile {
-  font-size: 34px;
-}
 
-.w-todos,
-.w-log {
-  grid-column: span 7;
-}
 
-.w-rem,
-.w-recap {
-  grid-column: span 5;
-}
 
 button.check-box {
   cursor: pointer;
@@ -1417,13 +1367,6 @@ li:hover .icon-x,
 
 /* ----------------------------------------------------------------- responsive */
 @media (max-width: 1150px) {
-  .stat-col,
-  .w-todos,
-  .w-rem,
-  .w-log,
-  .w-recap {
-    grid-column: span 12;
-  }
 }
 
 @media (max-width: 760px) {
@@ -1437,10 +1380,6 @@ li:hover .icon-x,
   }
   .pick-row {
     grid-template-columns: 1fr;
-  }
-  .stat-col {
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 10px;
   }
 }
 
@@ -1561,9 +1500,6 @@ a.item-title:hover {
   margin-top: 10px;
 }
 
-.item.compact .item-title {
-  font-size: 15px;
-}
 
 .act-save:hover {
   background: var(--blush);
@@ -1684,26 +1620,9 @@ a.item-title:hover {
 }
 
 /* Today: picks from your tabs */
-.w-picks {
-  grid-column: span 12;
-}
 
-.picks {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
-}
 
-.pick {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
 
-.pick .item {
-  width: 100%;
-}
 
 .empty-win {
   max-width: 620px;
@@ -2543,4 +2462,68 @@ a.item-title:hover {
   background: var(--field);
   border: 2px solid var(--line);
   border-radius: 8px;
+}
+
+/* ----------------------------------------------------------------- today below the ask box */
+.day-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  align-items: start;
+}
+
+.day-col {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.timeline li.did {
+  color: var(--muted);
+}
+
+.did-mark {
+  color: var(--good);
+}
+
+.timeline .icon-x {
+  font-size: 13px;
+}
+
+.ask-stats {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 8px;
+  font-size: 12px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--win);
+}
+
+.pill svg {
+  width: 12px;
+  height: 12px;
+}
+
+.pill.hit {
+  background: var(--sage-strong);
+  color: #1c1a21;
+}
+
+@media (max-width: 1000px) {
+  .day-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gh-rows li.stale .gh-title {
+  color: var(--muted);
 }

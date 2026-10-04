@@ -126,12 +126,13 @@ def test_api_create_list_act_delete(client, monkeypatch):
 def test_github_splits_or_queries(monkeypatch):
     calls = []
 
-    def fake(url, params):
+    def fake(url, params, **kw):
         calls.append(params["q"].split(" created:")[0])
         n = len(calls)
         return {"items": [{"id": n, "full_name": f"r/{n}", "html_url": "u", "stargazers_count": n}]}
 
     monkeypatch.setattr(sources, "get_json", fake)
+    monkeypatch.setattr(sources, "_gh_headers", dict)
     out = sources.github("topic:game-engine OR topic:gamedev")
     assert calls == ["topic:game-engine", "topic:gamedev"] and [i.title for i in out] == ["r/2", "r/1"]
 
@@ -166,3 +167,26 @@ def test_reach_servers_only_allowed_ones(tmp_path, monkeypatch):
         "exa": {"baseUrl": "https://mcp.exa.ai/mcp"}, "twitter": {"baseUrl": "https://x/mcp"}}}))  # fmt: skip
     monkeypatch.setattr(runner.Path, "home", lambda: tmp_path)
     assert runner.reach_servers(get_settings()) == {"exa": {"type": "http", "url": "https://mcp.exa.ai/mcp"}}
+
+
+def test_sources_are_normalized_and_checked():
+    m = spec.Module(id="x", name="X", sources=[{"type": "exa", "params": {"query": "q", "limit": 5}}])
+    assert m.sources[0].model_dump() == {"type": "exa", "query": "q", "limit": 5}
+    with pytest.raises(ValidationError, match="doesn't take"):
+        spec.Module(id="x", name="X", sources=[{"type": "rss", "feed": "u"}])
+    with pytest.raises(ValidationError, match="unknown source type"):
+        spec.Module(id="x", name="X", sources=[{"type": "twitter"}])
+
+
+def test_create_tab_refuses_dead_sources(client, monkeypatch):
+    from tamadesk.assistant import tools
+
+    def dead(**kw):
+        raise RuntimeError("HTTP Error 401: Forbidden")
+
+    monkeypatch.setitem(sources.SOURCES, "rss", dead)
+    out = tools.call(
+        get_settings(), "create_tab", {"name": "News", "sources": [{"type": "rss", "url": "https://x/feed"}]}
+    )
+    assert "not created" in out and "401" in out
+    assert client.get("/api/modules").json() == []
