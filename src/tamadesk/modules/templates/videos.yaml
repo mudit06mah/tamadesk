@@ -6,7 +6,6 @@ params:
 module:
   name: Videos
   icon: play
-  view: feed
   every: 6h
   sources:
     - {type: rss, url: "https://www.youtube.com/feeds/videos.xml?channel_id=${channel}"}

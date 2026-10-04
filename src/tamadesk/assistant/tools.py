@@ -13,7 +13,7 @@ from collections.abc import Callable
 from tamadesk.core import db
 from tamadesk.core.config import Settings
 from tamadesk.core.net import fetch, get_json
-from tamadesk.life import actions, capture
+from tamadesk.life import actions, capture, docs, github
 from tamadesk.modules import rank, sources, spec
 
 FEEDS = sorted(k for k in sources.SOURCES if k != "agent")
@@ -57,17 +57,17 @@ def list_tabs(s: Settings, conn: sqlite3.Connection) -> list[dict]:
     counts = {
         (r[0], r[1]): r[2] for r in conn.execute("SELECT module, status, count(*) FROM items GROUP BY 1, 2")
     }
-    return [{"id": m.id, "name": m.name, "view": m.view, "every": m.every, "sources": [x.model_dump() for x in m.sources],
+    return [{"id": m.id, "name": m.name, "every": m.every, "sources": [x.model_dump() for x in m.sources],
              "new": counts.get((m.id, "new"), 0), "kept": counts.get((m.id, "saved"), 0)} for m in spec.load_all(s)]  # fmt: skip
 
 
 @tool("create_tab", "Create a tab that refreshes on its own. Prefer several precise sources over one vague one. "
       "Use source type 'agent' {task} only when no feed/search can express the need (it costs tokens per run). "
-      "icon: book|news|code|target|eye|play|pen|star. view: feed (list) or deck (swipe, good for leads). "
+      "icon: book|news|code|target|eye|play|pen|star. "
       "every: 30m|6h|7d|'daily HH:MM'. actions from: save, skip, open, summarize, todo, draft.",
-      {"name": S, "icon": S, "view": {"enum": ["feed", "deck"]}, "every": S,
+      {"name": S, "icon": S, "every": S,
        "sources": {"type": "array", "items": {"type": "object"}}, "interests": {"type": "array", "items": S},
-       "actions": {"type": "array", "items": S}, "reasons": {"type": "array", "items": S}},
+       "actions": {"type": "array", "items": S}},
       ["name", "sources"])  # fmt: skip
 def create_tab(s: Settings, conn: sqlite3.Connection, **kw) -> dict:
     m = spec.Module(**{"id": spec.slug(kw["name"])} | kw)  # validated here, so errors come back to the model
@@ -144,6 +144,21 @@ def log(s: Settings, conn: sqlite3.Connection, text: str) -> str:
     with db.transaction(conn):
         actions.add_log(conn, text)
     return "logged"
+
+
+@tool(
+    "read_doc",
+    "Read one of the user's documents (resume, product brief, notes) by name, id or kind.",
+    {"ref": S},
+)
+def read_doc(s: Settings, conn: sqlite3.Connection, ref: str) -> str:
+    return docs.read(conn, ref) or f"no document {ref!r}"
+
+
+@tool("github_status", "The user's open GitHub work: their PRs (review decision, CI checks), issues assigned to "
+      "them, and PRs waiting for their review.", {}, [])  # fmt: skip
+def github_status(s: Settings, conn: sqlite3.Connection) -> dict:
+    return github.status()
 
 
 @tool("draft_email", "Save an email draft to the user's Mail tab for them to review and send. Never says it was "

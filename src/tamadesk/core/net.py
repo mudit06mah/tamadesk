@@ -7,7 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-UA = {"User-Agent": "tamadesk/0.2 (+https://github.com/mudit06mah/tamadesk)"}
+UA = {"User-Agent": "tamadesk/0.3 (+https://github.com/mudit06mah/tamadesk)"}
 
 
 class NetError(RuntimeError):

@@ -32,6 +32,9 @@ export type AskEvent =
   | { type: 'done'; text: string; error: boolean; cost_usd: number | null; tokens: number }
   | { type: 'error'; text: string }
 export type Usage = { usd: number; tokens: number; runs: number; daily_usd: number; max_usd_per_ask: number; model: string; effort: string }
+export type GhRow = { title: string; url: string; number: number; repo: string; updated_at: string; draft: boolean; review: string | null; checks: string | null; comments: number; author: string | null }
+export type GitHubStatus = { error?: string; login?: string; prs?: GhRow[]; issues?: GhRow[]; reviews?: GhRow[] }
+export type Doc = { id: number; name: string; kind: string; chars: number; created_at: string }
 export type Question = { key: string; q: string; hint: string }
 export type CompanionChoice = { species: string; label: string; blurb: string }
 
@@ -39,12 +42,10 @@ export type Mod = {
   id: string
   name: string
   icon: string
-  view: 'feed' | 'deck'
   every: string
   sources: ({ type: string } & Record<string, unknown>)[]
   interests: string[]
   actions: ('save' | 'skip' | 'open' | 'summarize' | 'todo' | 'done' | 'draft')[]
-  reasons: string[]
   new: number
   saved: number
   run: { last_run: string | null; last_error: string | null; added: number | null } | null
@@ -81,6 +82,7 @@ export type State = {
   companion: { species: string; name: string } | null
   has_voice: boolean
   samples: number
+  mail_drafts: number
   brain: { kind: 'claude_code' | 'ollama'; model: string }
   day: { recap_hour: number; todo_goal: number }
   progress: Progress
@@ -147,6 +149,10 @@ export const api = {
   chats: () => call<{ id: number; title: string; updated_at: string }[]>('/chats'),
   chat: (id: number) => call<ChatMsg[]>(`/chats/${id}`),
   usage: () => call<Usage>('/usage'),
+  github: (refresh = false) => call<GitHubStatus>(`/github${refresh ? '?refresh=true' : ''}`),
+  docs: () => call<Doc[]>('/docs'),
+  addDoc: (name: string, kind: string, data_b64: string) => post<{ id: number }>('/docs', { name, kind, data_b64 }),
+  deleteDoc: (id: number) => call(`/docs/${id}`, { method: 'DELETE' }),
   recap: () => post<Recap>('/recap'),
   brainCheck: () => call<{ ok: boolean; name: string; detail: string }>('/brain/check'),
   settings: (s: { brain_kind?: string; brain_model?: string; recap_hour?: number; todo_goal?: number; assistant_model?: string; assistant_effort?: string; max_usd_per_ask?: number; daily_usd?: number }) =>

@@ -129,7 +129,7 @@ export function NewTabDialog({
         <p className="dialog-lead">What should {buddy.name} keep an eye on for you?</p>
         <label className="field">
           <span>your interests ({buddy.name} fills topics from these)</span>
-          <input value={interests} onChange={(e) => setInterests(e.target.value)} placeholder="devops, quantum computing, game design…" />
+          <input value={interests} onChange={(e) => setInterests(e.target.value)} placeholder="e.g. web dev, climate tech, indie games…" />
         </label>
         <div className="tpl-grid">
           {ts.map((t) => (
@@ -138,7 +138,7 @@ export function NewTabDialog({
         </div>
         <label className="field">
           <span>…or describe it and {buddy.name} builds it (uses a little of your Claude budget)</span>
-          <input value={wish} onChange={(e) => setWish(e.target.value)} placeholder="papers on GPU quantum simulation, every morning" />
+          <input value={wish} onChange={(e) => setWish(e.target.value)} placeholder="e.g. new open-source note-taking apps, every week" />
         </label>
         <div className="dialog-actions">
           <button type="button" className="btn ghost" onClick={onClose}>

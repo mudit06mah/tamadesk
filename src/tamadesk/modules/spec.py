@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field, field_validator
 from tamadesk.core.config import Settings
 
 TEMPLATES = Path(__file__).parent / "templates"
-View = Literal["feed", "deck"]
 Action = Literal["save", "skip", "open", "summarize", "todo", "done", "draft"]
 SCHEDULE_RE = re.compile(r"^(?:(\d+)([mhd])|daily (\d{1,2}):(\d{2}))$")
 
@@ -25,12 +24,10 @@ class Module(BaseModel):
     id: str = Field(pattern=r"^[a-z0-9-]{1,32}$")
     name: str = Field(min_length=1, max_length=24)
     icon: str = "star"
-    view: View = "feed"
     every: str = "6h"  # 30m | 6h | 7d | daily 08:00
     sources: list[Source] = Field(min_length=1, max_length=8)
     interests: list[str] = []  # words that rank items up from day one
     actions: list[Action] = ["save", "skip", "open"]
-    reasons: list[str] = []  # deck only: quick skip reasons
     keep: int = Field(default=150, ge=10, le=1000)  # most unseen items kept per module
 
     @field_validator("every")

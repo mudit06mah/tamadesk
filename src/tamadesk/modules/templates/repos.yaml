@@ -6,7 +6,6 @@ params:
 module:
   name: Repos
   icon: code
-  view: feed
   every: daily 09:00
   sources:
     - {type: github, query: "${topics}", days: 30}

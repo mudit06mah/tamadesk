@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, askBolt, when, type MailBox, type MailDraft, type Sample, type Voice } from './api'
 import { useCompanion } from './Companion'
 import { useFx } from './fx/Fx'
+import { DocsPanel } from './Docs'
 import { Dialog, Win } from './ui'
 import type { Toast } from './util'
 
@@ -93,7 +94,12 @@ export function Mail({ notify, onChange }: Props) {
         )}
       </div>
 
-      <VoicePanel notify={notify} />
+      <div className="mail-side">
+        <VoicePanel notify={notify} />
+        <Win title="context.dir">
+          <DocsPanel notify={notify} />
+        </Win>
+      </div>
       <SetupDialog
         open={setup}
         box={box}
@@ -251,7 +257,7 @@ function VoicePanel({ notify }: { notify: Props['notify'] }) {
   }, [])
 
   return (
-    <Win title="voice.cfg" className="mail-side">
+    <Win title="voice.cfg">
       {voice ? (
         <div className="voice">
           <p>{voice.summary}</p>

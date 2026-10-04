@@ -1,6 +1,8 @@
 // Settings: which brain, when the recap runs, the daily goal, and replaying the New Game setup.
 import { useEffect, useState } from 'react'
-import { api, type State, type Usage } from './api'
+import { api, type Question, type State, type Usage } from './api'
+import { DocsPanel } from './Docs'
+import { ThemePicker } from './ThemePicker'
 import { useFx } from './fx/Fx'
 import { Win } from './ui'
 import type { Toast } from './util'
@@ -12,11 +14,15 @@ export function Settings({
   refresh,
   notify,
   replay,
+  theme,
+  setTheme,
 }: {
   state: State
   refresh: () => Promise<void>
   notify: (t: string, k?: Toast['kind']) => void
   replay: () => void
+  theme: string
+  setTheme: (t: string) => void
 }) {
   const fx = useFx()
   const [kind, setKind] = useState(s.brain.kind)
@@ -25,10 +31,13 @@ export function Settings({
   const [goal, setGoal] = useState(s.day.todo_goal)
   const [check, setCheck] = useState<{ ok: boolean; detail: string } | null>(null)
   const [use, setUse] = useState<Usage | null>(null)
+  const [questions, setQuestions] = useState<Question[]>([])
+  const [about, setAbout] = useState(s.about)
   const [ai, setAi] = useState({ model: 'sonnet', effort: 'medium', per: 0.5, daily: 3 })
 
   useEffect(() => {
     void api.brainCheck().then(setCheck)
+    void api.onboarding().then((o) => setQuestions(o.questions))
     void api.usage().then((u) => {
       setUse(u)
       setAi({ model: u.model, effort: u.effort, per: u.max_usd_per_ask, daily: u.daily_usd })
@@ -49,6 +58,32 @@ export function Settings({
 
   return (
     <div className="settings">
+      <Win title="you.txt">
+        <p className="muted small">Everything your companion knows about you. Edit anytime; it's used in every ask.</p>
+        {questions.map((q) => (
+          <label key={q.key} className="field">
+            <span>{q.q}</span>
+            <textarea
+              rows={2}
+              value={about[q.key] ?? ''}
+              placeholder={q.hint}
+              onChange={(e) => setAbout({ ...about, [q.key]: e.target.value })}
+              onBlur={async (e) => {
+                if ((s.about[q.key] ?? '') === e.target.value) return
+                await api.setAbout(q.key, e.target.value)
+                fx.sound('tap')
+                await refresh()
+              }}
+            />
+          </label>
+        ))}
+        <DocsPanel notify={notify} />
+      </Win>
+
+      <Win title="theme.cfg">
+        <ThemePicker value={theme} onPick={setTheme} />
+      </Win>
+
       <Win title="assistant.sys">
         <p className="muted small">
           Everything you ask runs on your own Claude Code. Costs are what the same work would cost on the API, a fair way to see how

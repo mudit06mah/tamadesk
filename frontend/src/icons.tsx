@@ -48,6 +48,10 @@ export const MailIcon = () => (
   <svg {...base} aria-hidden><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></svg>
 )
 
+export const PaletteIcon = () => (
+  <svg {...base} aria-hidden><path d="M12 3a9 9 0 100 18c1.1 0 1.5-.8 1.2-1.6-.4-.9.2-1.9 1.2-1.9H17a4 4 0 004-4c0-5-4-10.5-9-10.5z" /><circle cx="7.5" cy="11" r="1" /><circle cx="10" cy="7" r="1" /><circle cx="15" cy="7.5" r="1" /></svg>
+)
+
 /** Module YAML names an icon by word; unknown words fall back to a star. */
 const BY_NAME: Record<string, () => React.JSX.Element> = {
   book: BookIcon, news: NewsIcon, code: CodeIcon, target: TargetIcon, eye: EyeIcon, play: PlayIcon, star: StarIcon, pen: PenIcon,

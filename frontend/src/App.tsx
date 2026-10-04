@@ -4,7 +4,10 @@ import { api, askBolt, when, type Mod, type State } from './api'
 import { Companion, CompanionCtx } from './Companion'
 import { FxProvider, useFx } from './fx/Fx'
 import { play, setSound, soundOn } from './fx/sound'
-import { BookIcon, GearIcon, HomeIcon, MailIcon, ModIcon, MoonIcon, PlusIcon, SunIcon } from './icons'
+import { BookIcon, CodeIcon, GearIcon, HomeIcon, MailIcon, ModIcon, PaletteIcon, PlusIcon } from './icons'
+import { GitHub } from './GitHub'
+import { applyTheme, savedTheme } from './themes'
+import { ThemePicker } from './ThemePicker'
 import { Journal } from './Journal'
 import { Mail } from './Mail'
 import { ModulePage } from './ModulePage'
@@ -17,20 +20,8 @@ import { isTyping, type Toast } from './util'
 
 // fixed pages, plus one `m:<id>` page per module tab (between Today and Journal)
 export type Page = string
-type Theme = 'paper' | 'phosphor'
-const pagesFor = (mods: Mod[]): Page[] => ['today', ...mods.map((m) => `m:${m.id}`), 'mail', 'journal', 'settings']
-
-function initialTheme(): Theme {
-  const q = new URLSearchParams(location.search).get('theme')
-  if (q === 'paper' || q === 'phosphor') return q
-  try {
-    const saved = localStorage.getItem('theme')
-    if (saved === 'paper' || saved === 'phosphor') return saved
-  } catch {
-    /* storage unavailable */
-  }
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'phosphor' : 'paper'
-}
+const CORE: Page[] = ['today', 'mail', 'github', 'journal']
+const pagesFor = (mods: Mod[]): Page[] => [...CORE, ...mods.map((m) => `m:${m.id}`), 'settings']
 
 function remembered(key: string): number | null {
   try {
@@ -71,7 +62,20 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   const [pendingAsk, setPendingAsk] = useState<{ text: string; send: boolean } | null>(null)
   const pageRef = useRef(page)
   pageRef.current = page
-  const [theme, setTheme] = useState<Theme>(initialTheme)
+  const [theme, setTheme] = useState(savedTheme)
+  const [picker, setPicker] = useState(false)
+  useEffect(() => {
+    if (!picker) return
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !(e.target as Element).closest('.theme-pop, .mini')) setPicker(false)
+    }
+    window.addEventListener('keydown', close)
+    window.addEventListener('mousedown', close)
+    return () => {
+      window.removeEventListener('keydown', close)
+      window.removeEventListener('mousedown', close)
+    }
+  }, [picker])
   const [sound, setSoundState] = useState(soundOn())
   const [offline, setOffline] = useState(false)
   const [replay, setReplay] = useState(false)
@@ -100,7 +104,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   }, [])
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
+    applyTheme(theme)
     try {
       localStorage.setItem('theme', theme)
     } catch {
@@ -183,13 +187,33 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   const ringing = state.reminders.filter((r) => r.status === 'fired')
   const name = state.companion?.name ?? 'buddy'
   const mod = page.startsWith('m:') ? mods.find((m) => `m:${m.id}` === page) : undefined
-  const tiles: { id: Page; label: string; icon: React.ReactNode; count?: number }[] = [
+  const core: { id: Page; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'today', label: 'Today', icon: <HomeIcon />, count: state.today.open.length },
-    ...mods.map((m) => ({ id: `m:${m.id}`, label: m.name, icon: <ModIcon name={m.icon} />, count: m.new })),
-    { id: 'mail', label: 'Mail', icon: <MailIcon /> },
+    { id: 'mail', label: 'Mail', icon: <MailIcon />, count: state.mail_drafts },
+    { id: 'github', label: 'GitHub', icon: <CodeIcon /> },
     { id: 'journal', label: 'Journal', icon: <BookIcon /> },
-    { id: 'settings', label: 'Settings', icon: <GearIcon /> },
   ]
+  const navRow = (t: { id: Page; label: string; icon: React.ReactNode; count?: number }, big = false) => {
+    const key = pages.indexOf(t.id) + 1
+    return (
+      <motion.button
+        layout="position"
+        key={t.id}
+        id={`dock-${t.id}`}
+        className={`nav-row ${big ? 'big' : ''} ${page === t.id ? 'on' : ''}`}
+        onClick={() => go(t.id)}
+        whileTap={{ scale: 0.95 }}
+        initial={{ opacity: 0, x: -12 }}
+        animate={{ opacity: 1, x: 0 }}
+      >
+        {page === t.id && <motion.span layoutId="nav-on" className="nav-glow" transition={{ type: 'spring', stiffness: 500, damping: 34 }} />}
+        <span className="nav-icon">{t.icon}</span>
+        <span className="nav-label">{t.label}</span>
+        {!!t.count && <span className="nav-count">{t.count}</span>}
+        {key > 0 && key < 10 && <kbd className="nav-key">{key}</kbd>}
+      </motion.button>
+    )
+  }
 
   return (
     <div className="desk">
@@ -203,31 +227,22 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
           </span>
         </div>
 
-        <nav className="tiles">
-          {tiles.map((t, i) => (
-            <motion.button
-              layout
-              key={t.id}
-              id={`dock-${t.id}`}
-              className={`tile ${page === t.id ? 'on' : ''}`}
-              onClick={() => go(t.id)}
-              initial={{ scale: 0.3, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 380, damping: 18 }}
-            >
-              <span className="tile-icon">{t.icon}</span>
-              <span className="tile-label">{t.label}</span>
-              {!!t.count && <span className="tile-count">{t.count}</span>}
-              {i < 9 && <kbd className="tile-key">{i + 1}</kbd>}
-              {page === t.id && <motion.span layoutId="tile-on" className="tile-glow" />}
-            </motion.button>
-          ))}
-          <motion.button layout className="tile tile-add" onClick={() => setNewTab(true)} whileTap={{ scale: 0.9 }} title="Add a tab">
-            <span className="tile-icon">
-              <PlusIcon />
-            </span>
-            <span className="tile-label">New tab</span>
+        <nav className="nav-core">{core.map((t) => navRow(t, true))}</nav>
+
+        <div className="nav-head">
+          <span>your tabs</span>
+          <motion.button className="nav-add" whileTap={{ scale: 0.85, rotate: 90 }} onClick={() => setNewTab(true)} title="Add a tab" aria-label="Add a tab">
+            <PlusIcon />
           </motion.button>
+        </div>
+        <nav className="nav-tabs">
+          {mods.length === 0 ? (
+            <button className="nav-empty" onClick={() => askBolt('Keep an eye on ')}>
+              Ask {name} to keep an eye on something, or press +
+            </button>
+          ) : (
+            mods.map((m) => navRow({ id: `m:${m.id}`, label: m.name, icon: <ModIcon name={m.icon} />, count: m.new }))
+          )}
         </nav>
 
         <div className="dock-foot">
@@ -236,8 +251,8 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
             {offline ? 'Backend offline' : `${state.brain.kind === 'ollama' ? 'Ollama' : 'Claude Code'} · ${state.brain.model}`}
           </div>
           <div className="toggles">
-            <button className="mini" onClick={() => setTheme(theme === 'phosphor' ? 'paper' : 'phosphor')} title={theme === 'phosphor' ? 'Paper theme' : 'Phosphor theme'}>
-              {theme === 'phosphor' ? <SunIcon /> : <MoonIcon />}
+            <button className="mini" onClick={() => setPicker(!picker)} title="Theme" aria-label="Theme">
+              <PaletteIcon />
             </button>
             <button
               className={`mini ${sound ? '' : 'muted-btn'}`}
@@ -250,7 +265,23 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
             >
               {sound ? '♪' : '×'}
             </button>
+            <button className={`mini ${page === 'settings' ? 'on' : ''}`} onClick={() => go('settings')} title="Settings" aria-label="Settings">
+              <GearIcon />
+            </button>
           </div>
+          <AnimatePresence>
+            {picker && (
+              <motion.div className="theme-pop" initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6 }}>
+                <ThemePicker
+                  value={theme}
+                  onPick={(t) => {
+                    play('tap')
+                    setTheme(t)
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </aside>
 
@@ -261,7 +292,8 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
             {mod && <ModulePage key={mod.id} mod={mod} notify={notify} onChange={refresh} onDeleted={() => (go('today'), void refresh())} />}
             {page === 'journal' && <Journal />}
             {page === 'mail' && <Mail notify={notify} onChange={refresh} />}
-            {page === 'settings' && <Settings state={state} refresh={refresh} notify={notify} replay={() => setReplay(true)} />}
+            {page === 'github' && <GitHub notify={notify} />}
+            {page === 'settings' && <Settings state={state} refresh={refresh} notify={notify} replay={() => setReplay(true)} theme={theme} setTheme={setTheme} />}
           </motion.div>
         </AnimatePresence>
       </main>

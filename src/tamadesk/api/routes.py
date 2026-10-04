@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from tamadesk.brain import BrainError, get_brain
 from tamadesk.core import db
 from tamadesk.core.config import get_settings, save_settings
-from tamadesk.life import actions, capture, game, writer
+from tamadesk.life import actions, capture, docs, game, github, writer
 from tamadesk.life.onboarding import COMPANIONS, QUESTIONS
 
 router = APIRouter(prefix="/api")
@@ -70,6 +70,7 @@ def state(conn: Conn) -> dict:
         "companion": db.get_profile(conn, "companion"),
         "has_voice": db.get_profile(conn, "voice") is not None,
         "samples": q("SELECT COUNT(*) FROM samples").fetchone()[0],
+        "mail_drafts": q("SELECT COUNT(*) FROM drafts WHERE status = 'draft'").fetchone()[0],
         "brain": {"kind": s.brain.kind, "model": s.brain.model},
         "day": {"recap_hour": s.day.recap_hour, "todo_goal": s.day.todo_goal},
         "progress": game.progress(conn),
@@ -136,6 +137,36 @@ def set_about(f: AboutField, conn: Conn) -> dict:
     about = db.get_profile(conn, "about", {}) | {f.key: f.value.strip()}
     db.set_profile(conn, "about", about)
     return about
+
+
+class DocIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    kind: str = "other"
+    data_b64: str = Field(max_length=15_000_000)
+
+
+@router.get("/docs")
+def list_docs(conn: Conn) -> list[dict]:
+    return docs.listing(conn)
+
+
+@router.post("/docs")
+def add_doc(d: DocIn, conn: Conn) -> dict:
+    try:
+        return {"id": docs.add(conn, d.name, d.kind, d.data_b64)}
+    except Exception as e:  # an unreadable file is a 422 for the user, not a 500
+        raise HTTPException(422, f"couldn't read {d.name}: {e}") from e
+
+
+@router.delete("/docs/{doc_id}")
+def delete_doc(doc_id: int, conn: Conn) -> dict:
+    conn.execute("DELETE FROM docs WHERE id = ?", (doc_id,))
+    return {"ok": True}
+
+
+@router.get("/github")
+def github_status(refresh: bool = False) -> dict:
+    return github.status(refresh)
 
 
 # ---------------------------------------------------------------- capture, todos, reminders

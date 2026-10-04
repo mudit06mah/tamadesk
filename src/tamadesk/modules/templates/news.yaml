@@ -7,7 +7,6 @@ params:
 module:
   name: News
   icon: news
-  view: feed
   every: 3h
   sources:
     - {type: hn, query: "${topics}", min_points: 40}

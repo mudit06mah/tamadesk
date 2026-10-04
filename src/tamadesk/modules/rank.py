@@ -2,7 +2,7 @@
 
 No ML runtime and no tokens. Each saved item adds +1 to its words, each skip -1; an item's score is
 the sum of its words' smoothed log-odds plus a boost for the module's declared interests. Small
-enough to run on every fetch, and explainable ("why: gpu, kubernetes").
+enough to run on every fetch, and explainable ("why: rust, compilers").
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ def score(conn: sqlite3.Connection, module: str, text: str, interests: list[str]
     rows = conn.execute(f"SELECT term, pos, neg FROM terms WHERE module = ? AND term IN ({marks})",
                         (module, *ws)).fetchall()  # fmt: skip
     parts = {r["term"]: math.log((r["pos"] + 1) / (r["neg"] + 1)) for r in rows}
-    for i in interests:  # an interest counts when all its words show up ("quantum circuit simulation")
+    for i in interests:  # an interest counts when all its words show up ("machine learning systems")
         if (iw := words(i)) and iw <= ws:
             parts[i.lower()] = parts.get(i.lower(), 0) + 1.5
     top = sorted((k for k, v in parts.items() if v > 0.3), key=lambda k: -parts[k])[:3]

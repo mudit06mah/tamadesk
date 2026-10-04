@@ -6,7 +6,6 @@ params:
 module:
   name: Papers
   icon: book
-  view: feed
   every: daily 08:00
   sources:
     - {type: arxiv, query: "${topics}"}

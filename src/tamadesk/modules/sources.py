@@ -183,7 +183,7 @@ def parse_exa(text: str) -> list[Item]:
         body = block.split("Highlights:", 1)[-1] if "Highlights:" in block else ""
         host = re.sub(r"^www\.", "", url[1].split("/")[2]) if url[1].count("/") >= 2 else ""
         out.append(Item(ext_id=uid(url[1]), title=clean(title[1], 200), url=url[1], subtitle=host,
-                        body=clean(re.sub(r"[#*\[\]]", " ", body)),
+                        body=clean(re.sub(r"[#*\[\]|]|-{3,}", " ", body)),
                         published=date[1] if date and date[1] != "N/A" else ""))  # fmt: skip
     return out
 

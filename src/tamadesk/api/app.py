@@ -32,7 +32,9 @@ def create_app(scheduler: bool = True) -> FastAPI:
         yield
         jobs.stop()
 
-    app = FastAPI(title="tamadesk", docs_url="/api/docs", openapi_url="/api/openapi.json", lifespan=lifespan)
+    app = FastAPI(
+        title="tamadesk", docs_url="/api/swagger", openapi_url="/api/openapi.json", lifespan=lifespan
+    )
     app.include_router(router)
     app.include_router(modules_router)
     app.include_router(assistant_router)

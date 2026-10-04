@@ -17,6 +17,7 @@ from pathlib import Path
 
 from tamadesk.core import db, usage
 from tamadesk.core.config import Settings
+from tamadesk.life import docs
 
 ALLOWED = ["mcp__tamadesk", "WebFetch"]
 
@@ -48,10 +49,14 @@ def system_prompt(s: Settings, conn: sqlite3.Connection) -> str:
     voice = db.get_profile(conn, "voice")
     me = about.get("name") or "the user"
     lines = "\n".join(f"- {k}: {v}" for k, v in about.items() if v)
+    files = "\n".join(
+        f"- {d['name']} ({d['kind']}, {d['chars'] // 1000 + 1}k chars)" for d in docs.listing(conn)
+    )
     return f"""You are {buddy["name"]}, a small pixel {buddy["species"]} who lives on {me}'s desk and is their personal assistant. Now: {datetime.now().astimezone():%A %d %B %Y, %H:%M %Z}.
 
 About {me}:
 {lines or "- (nothing yet)"}
+{f"Their documents (read with read_doc only when a task needs them, e.g. the resume for a job email, the product brief for outreach):{chr(10)}{files}" if files else ""}
 {f"Their writing voice: {voice['summary']} Do: {'; '.join(voice['do'])}. Don't: {'; '.join(voice['dont'])}." if voice else ""}
 
 How you work:

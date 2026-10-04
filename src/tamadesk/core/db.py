@@ -151,6 +151,16 @@ MIGRATIONS: list[str] = [
     ALTER TABLE drafts ADD COLUMN sent_at TEXT;
     ALTER TABLE drafts ADD COLUMN error TEXT;
     """,
+    # 4: documents the assistant can read when a task needs them (resume, product brief, …)
+    """
+    CREATE TABLE docs (
+        id         INTEGER PRIMARY KEY,
+        name       TEXT NOT NULL,
+        kind       TEXT NOT NULL DEFAULT 'other',   -- resume|product|notes|other
+        text       TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    """,
 ]
 
 

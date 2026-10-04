@@ -90,6 +90,19 @@ The top of the desk is one box: **ask Bolt to do it**. Each ask runs the user's 
 - Dry run by default, with a daily cap and an opt-out line on outreach.
 - Guessed addresses need an explicit "I checked this".
 
+### v0.3.1: layout, GitHub, documents, themes
+- **Sidebar:**
+  - Today, Mail, GitHub and Journal stay pinned.
+  - The user's tabs live in a scrolling list.
+  - Theme, sound and settings are pinned at the bottom.
+- **GitHub** (`life/github.py`): one `gh api graphql` query for open PRs (review decision, CI rollup),
+  assigned issues and review requests, cached 5 minutes. Also a `github_status` tool.
+- **Documents** (`life/docs.py`): PDF/md/txt stored as text. The system prompt lists them, and
+  `read_doc` fetches one only when needed.
+- **Themes** (`frontend/src/themes.ts`): each palette is a set of CSS variables. `crt` adds
+  scanlines and `dark` flips color-scheme. Adding one takes a single line.
+- The swipe deck was removed: every tab is the same ranked list.
+
 ## Modules: tabs that adapt to the user (v0.2)
 
 The UI is not generated. A **module** is a YAML file in `<home>/modules/`. It names its sources,
@@ -103,7 +116,7 @@ icon: book            # book | news | code | target | eye | play | pen | star
 view: feed            # feed (ranked list) | deck (swipe one at a time)
 every: daily 08:00    # 30m | 6h | 7d | daily HH:MM
 sources:
-  - {type: arxiv, query: "quantum circuit simulation, GPU"}
+  - {type: arxiv, query: "graph neural networks, protein folding"}
 interests: [gpu]      # boosts items from day one
 actions: [save, skip, summarize, todo, open]
 reasons: []           # deck only: quick skip reasons

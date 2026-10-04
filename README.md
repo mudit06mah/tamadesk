@@ -21,8 +21,8 @@ The writing is done by **your own** Claude Code (or a local model via Ollama).
 - *"Find 15 small e-commerce brands in Europe that might need my design studio, with a contact"*:
   a lead deck you swipe through. Press ✉ on a lead and Bolt researches it and drafts an email in
   your voice into **Mail**.
-- *"Every morning, the best new papers on GPU quantum simulation"*, *"remind me to call mom at 6"*,
-  *"what changed in Kubernetes 1.34?"*: the same box.
+- *"Every morning, the best new papers on climate modelling"*, *"remind me to call mom at 6"*,
+  *"what changed in the latest Python release?"*: the same box.
 
 You watch every step as it happens: "searching GitHub…", "hatching a tab…", "drafting…".
 
@@ -31,6 +31,19 @@ You watch every step as it happens: "searching GitHub…", "hatching a tab…", 
   agent-reach's login-free web search. It can't use a shell or edit files.
 - **You set the budget:** a cap per ask and a daily cap. Every answer shows roughly what it used.
 - `todo …`, `remind me …` and `log …` are handled instantly on the desk and cost nothing.
+
+**GitHub:** your open PRs with review decision and CI state, issues assigned to you, and PRs
+waiting for your review, all through your own `gh` login. Ask Bolt "which stuck PR should I fix
+first?".
+
+**You:**
+- Settings → You holds everything your companion knows about you (interests, stack, what you
+  offer), editable anytime.
+- Add your resume or a product brief (PDF, .md, .txt). Bolt reads them only when a task needs
+  them, so they cost nothing otherwise.
+
+**Themes:** twelve palettes, from lavender paper and sakura to Game Boy, amber CRT and midnight
+neon.
 
 **Tabs** are what Bolt (or you, from the gallery) builds for recurring needs:
 - They're small YAML files with free sources: arXiv, Hacker News, GitHub, RSS, and Exa web search.
