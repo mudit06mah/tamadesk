@@ -67,7 +67,7 @@ export function AskPanel({
 }) {
   const fx = useFx()
   const buddy = useCompanion()
-  const { text, setText, msgs, live, chatId, chats, usage, send, openChat, focusTick, doneTick } = useAsk()
+  const { text, setText, msgs, live, chatId, chats, usage, send, stop, openChat, focusTick, doneTick } = useAsk()
   const [poke, setPoke] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const logRef = useRef<HTMLDivElement>(null)
@@ -77,9 +77,21 @@ export function AskPanel({
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
   }, [msgs, live])
+  // a button that hands you a prompt: bring the box into view and put the cursor at the end to edit
   useEffect(() => {
-    if (focusTick) inputRef.current?.focus()
+    const el = inputRef.current
+    if (!focusTick || !el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.focus({ preventScroll: true })
+    el.setSelectionRange(el.value.length, el.value.length)
   }, [focusTick])
+  // the box grows with what's in it (up to a point), so a long prefilled prompt is readable
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 360)}px`
+  }, [text])
 
   const lastStep = live?.steps.at(-1)
   const say = poke ?? (running ? (lastStep ? `${stepLabel(lastStep)}…` : 'On it…') : msgs.length ? 'Anything else?' : greeting)
@@ -165,9 +177,15 @@ export function AskPanel({
                   <i style={{ width: `${Math.min(100, spent * 100)}%` }} />
                 </span>
               )}
-              <motion.button className="btn solid" whileTap={{ scale: 0.9 }} disabled={running || !text.trim()}>
-                {running ? <span className="blink">working</span> : 'Go ▶'}
-              </motion.button>
+              {running ? (
+                <motion.button type="button" className="btn stop-btn" whileTap={{ scale: 0.9 }} onClick={stop} aria-label={`Stop ${buddy.name}`}>
+                  ■ stop
+                </motion.button>
+              ) : (
+                <motion.button className="btn solid" whileTap={{ scale: 0.9 }} disabled={!text.trim()}>
+                  Go ▶
+                </motion.button>
+              )}
             </div>
           </form>
           {!msgs.length && !running && (

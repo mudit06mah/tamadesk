@@ -59,13 +59,20 @@ def _stem(host: str) -> str:
     return parts[-2] if len(parts) >= 2 else parts[0]
 
 
+# sites that host other people's things: a kept video or repo there says nothing about who'd email you
+PLATFORMS = {"youtube", "youtu", "github", "google", "medium", "substack", "notion", "linkedin", "twitter",
+             "ycombinator", "wikipedia", "reddit", "arxiv", "mailchimp", "wellfound", "indeed"}  # fmt: skip
+
+
 def pipeline_keys(conn: sqlite3.Connection) -> list[tuple[int, set[str]]]:
-    """For each job/lead you're pursuing, the words that would identify mail about it."""
+    """For each job/lead you're pursuing, the words that would identify mail about it.
+    Only things you could hear back from: items with a stage, or kept jobs and leads."""
     import json
 
     out = []
     for r in conn.execute(
-        "SELECT id, title, url, data FROM items WHERE stage IS NOT NULL OR status = 'saved'"
+        """SELECT id, title, url, data FROM items WHERE stage IS NOT NULL OR (status = 'saved'
+           AND (data LIKE '%"apply_url"%' OR data LIKE '%"email"%' OR module LIKE '%lead%'))"""
     ):
         d = json.loads(r["data"] or "{}")
         keys = set()
@@ -79,7 +86,7 @@ def pipeline_keys(conn: sqlite3.Connection) -> list[tuple[int, set[str]]]:
                     keys.add(_stem(host))
         if d.get("company"):
             keys.add(re.sub(r"[^a-z0-9]", "", d["company"].lower()))
-        out.append((r["id"], {k for k in keys if len(k) >= 4}))
+        out.append((r["id"], {k for k in keys if len(k) >= 4 and k not in PLATFORMS}))
     return out
 
 

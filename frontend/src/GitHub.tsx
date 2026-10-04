@@ -105,7 +105,7 @@ export function GitHub({ notify }: { notify: (t: string, k?: Toast['kind']) => v
               'Find good first issues in projects like the ones I contribute to',
               'Which of my repos should I revive, finish or archive?',
             ].map((t) => (
-              <motion.button key={t} className="chip" whileTap={{ scale: 0.94 }} onClick={() => askBolt(t, true)}>
+              <motion.button key={t} className="chip" whileTap={{ scale: 0.94 }} onClick={() => askBolt(t)}>
                 {t}
               </motion.button>
             ))}

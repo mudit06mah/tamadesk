@@ -63,7 +63,7 @@ export function ModulePage({ mod, notify, onChange, onDeleted }: Props) {
     if (!kept.length) kept = (await api.items(mod.id, 'new')).items.slice(0, 6)
     if (!kept.length) return notify(`Nothing in ${mod.name} yet. Refresh it first.`, 'err')
     const list = kept.slice(0, 15).map((it) => `- ${it.title}${it.url ? ` (${it.url})` : ''}${it.data.email ? ` [published email: ${it.data.email}]` : ''} [item ${it.id}]`)
-    askBolt(`${w.prompt}\n\nFrom my "${mod.name}" tab${note}:\n${list.join('\n')}`, true)
+    askBolt(`${w.prompt}\n\nFrom my "${mod.name}" tab${note}:\n${list.join('\n')}`)
   }
 
   const refresh = async () => {
@@ -108,7 +108,6 @@ export function ModulePage({ mod, notify, onChange, onDeleted }: Props) {
               animate={{ opacity: 1, y: 0, transition: { delay: 0.05 * i } }}
               whileTap={{ scale: 0.92 }}
               onClick={() => runFlow(w)}
-              title={w.prompt}
             >
               ✦ {w.label}
             </motion.button>
@@ -124,7 +123,7 @@ export function ModulePage({ mod, notify, onChange, onDeleted }: Props) {
             </span>
             <button
               className="btn tiny"
-              onClick={() => askBolt(`My "${mod.name}" tab has a source that keeps failing (${mod.run?.last_error}). Replace it with a working one.`, true)}
+              onClick={() => askBolt(`My "${mod.name}" tab has a source that keeps failing (${mod.run?.last_error}). Replace it with a working one.`)}
             >
               Ask {buddy.name} to fix it
             </button>

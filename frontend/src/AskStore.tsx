@@ -17,6 +17,7 @@ type Ctx = {
   chats: { id: number; title: string; updated_at: string }[]
   usage: Usage | null
   send: (t: string) => Promise<void>
+  stop: () => void
   openChat: (id: number | null) => Promise<void>
   focusTick: number
   doneTick: number
@@ -41,6 +42,7 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
   const [focusTick, setFocusTick] = useState(0)
   const [doneTick, setDoneTick] = useState(0)
   const busy = useRef(false)
+  const runningChat = useRef<number | null>(null) // the chat whose answer is streaming (for stop)
 
   const loadMeta = useCallback(() => {
     void api.usage().then(setUsage)
@@ -94,6 +96,7 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
       try {
         await ask(t, chatId, (e) => {
           if (e.type === 'chat') {
+            runningChat.current = e.chat_id
             setChatId(e.chat_id)
             try {
               localStorage.setItem(SAVED, String(e.chat_id))
@@ -120,6 +123,7 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
       setMsgs((m) => [...m, { ...final, steps, text: final.text || liveText }])
       setLive(null)
       busy.current = false
+      runningChat.current = null
       fx.sound('arrive')
       setDoneTick((n) => n + 1)
       loadMeta()
@@ -127,6 +131,10 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
     },
     [chatId, fx, onChange, loadMeta, notify],
   )
+
+  const stop = useCallback(() => {
+    if (runningChat.current) void api.stopAsk(runningChat.current).then(() => fx.sound('undo'))
+  }, [fx])
 
   // "ask Bolt" from anywhere: lead buttons, the new-tab dialog, the / key, Memory
   useEffect(() => {
@@ -144,6 +152,6 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
   }, [send, openChat])
 
   return (
-    <AskCtx.Provider value={{ text, setText, msgs, live, chatId, chats, usage, send, openChat, focusTick, doneTick }}>{children}</AskCtx.Provider>
+    <AskCtx.Provider value={{ text, setText, msgs, live, chatId, chats, usage, send, stop, openChat, focusTick, doneTick }}>{children}</AskCtx.Provider>
   )
 }

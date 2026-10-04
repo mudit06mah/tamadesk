@@ -188,6 +188,7 @@ export const api = {
   renameModule: (id: string, name: string) => call<Mod>(`/modules/${id}/name`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   mailSetup: (b: { address: string; from_name: string; app_password: string; dry_run: boolean; daily_cap: number }) =>
     call<{ ok: boolean; ready: boolean }>('/mail/setup', { method: 'PUT', body: JSON.stringify(b) }),
+  stopAsk: (chatId: number) => post<{ stopped: boolean }>(`/ask/${chatId}/stop`),
   chats: () => call<{ id: number; title: string; updated_at: string }[]>('/chats'),
   chat: (id: number) => call<ChatMsg[]>(`/chats/${id}`),
   usage: () => call<Usage>('/usage'),

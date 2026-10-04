@@ -186,3 +186,29 @@ def test_rename_a_tab_without_refetching(client, monkeypatch):
     m = spec.get(get_settings(), "j")
     assert m.name == "Dream jobs" and m.sources[0].model_dump().get("query") == "q"
     assert client.patch("/api/modules/j/name", json={"name": "x" * 40}).status_code == 422
+
+
+def test_a_running_ask_can_be_stopped(tmp_path):
+    import threading
+
+    from tamadesk.assistant import runner
+
+    s = type("S", (), {"home": tmp_path})()
+    out: list[dict] = []
+    t = threading.Thread(target=lambda: out.extend(runner.stream(s, ["sleep", "30"], key=7)))
+    t.start()
+    while 7 not in runner.RUNNING:
+        pass
+    assert runner.stop(7) and not runner.stop(8)
+    t.join(5)
+    assert out == [{"type": "stopped"}] and 7 not in runner.RUNNING
+
+
+def test_a_kept_video_never_turns_platform_mail_into_news(desk):
+    _, conn, _ = desk
+    conn.execute("INSERT INTO items (module, ext_id, source, title, url, status) "
+                 "VALUES ('videos', 'v', 'rss', 'A talk', 'https://www.youtube.com/watch?v=abcdefghijk', 'saved')")  # fmt: skip
+    tos = _msg(
+        "YouTube <no-reply@youtube.com>", "Terms of Service reminder", "Quarterly reminder about our terms."
+    )
+    assert inbox.match(conn, "me@gmail.com", tos) is None

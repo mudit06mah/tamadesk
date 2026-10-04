@@ -20,7 +20,7 @@ export function useItemActions(notify: (t: string, k?: Toast['kind']) => void, o
         const d = it.data
         const contact = d.email ? ` The posting publishes ${d.email} (source: ${d.email_source}).` : ''
         const what = d.apply_url ? 'job posting: draft a short application email in Mail (use my resume)' : 'lead: draft an outreach email to them in Mail'
-        askBolt(`Research this ${what} (item ${it.id}): ${it.title} ${it.url ?? ''}.${contact}`.trim(), true)
+        askBolt(`Research this ${what} (item ${it.id}): ${it.title} ${it.url ?? ''}.${contact}`.trim())
       } else if (a === 'todo') {
         await api.itemTodo(it.id)
         fx.sound('capture')
@@ -80,7 +80,20 @@ export function ItemCard({
     setAsking(false)
     fx.sound('stamp')
   }
-  const acts = mod.actions.filter((a): a is Act => a !== 'open' && (it.status === 'new' || (a !== 'save' && a !== 'skip')))
+  const job = !!it.data.apply_url
+  // a job's next steps are email or apply, so a todo would only be a third way to say the same thing
+  const acts = mod.actions.filter((a): a is Act => a !== 'open' && !(job && a === 'todo') && (it.status === 'new' || (a !== 'save' && a !== 'skip')))
+  const btn = (a: Act) => (
+    <motion.button
+      key={a}
+      className={`btn tiny act-${a}`}
+      whileTap={{ scale: 0.86, rotate: a === 'skip' ? -4 : 4 }}
+      disabled={busy || (a === 'summarize' && !!sum)}
+      onClick={(e) => run(it, a, e.currentTarget)}
+    >
+      {busy && a === 'summarize' ? <span className="blink">reading…</span> : LABEL[a]}
+    </motion.button>
+  )
   return (
     <div className="item">
       <div className="item-top">
@@ -109,30 +122,17 @@ export function ItemCard({
         it.body && <p className="item-body">{it.body}</p>
       )}
       <div className="item-acts">
-        {acts.map((a) => (
-          <motion.button
-            key={a}
-            className={`btn tiny act-${a}`}
-            whileTap={{ scale: 0.86, rotate: a === 'skip' ? -4 : 4 }}
-            disabled={busy || (a === 'summarize' && !!sum)}
-            onClick={(e) => run(it, a, e.currentTarget)}
-          >
-            {busy && a === 'summarize' ? <span className="blink">reading…</span> : LABEL[a]}
-          </motion.button>
-        ))}
-        {it.data.apply_url && (
-          <a className="btn tiny solid apply" href={it.data.apply_url} target="_blank" rel="noreferrer" onClick={() => !stage && setTimeout(() => setAsking(true), 800)}>
-            apply ↗
-          </a>
-        )}
-        {it.data.apply_url && !stage && !asking && (
-          <button className="btn tiny ghost" title="Already applied elsewhere? Mark it" onClick={() => mark('applied')}>
-            mark applied
-          </button>
-        )}
+        {acts.filter((a) => a !== 'draft').map((a) => btn(a))}
+        <span className="grow" />
         {it.data.discussion && (
           <a className="btn tiny ghost" href={it.data.discussion} target="_blank" rel="noreferrer">
             discussion ↗
+          </a>
+        )}
+        {acts.includes('draft') && btn('draft')}
+        {job && (
+          <a className="btn tiny solid apply" href={it.data.apply_url} target="_blank" rel="noreferrer" onClick={() => !stage && setTimeout(() => setAsking(true), 800)}>
+            apply ↗
           </a>
         )}
       </div>

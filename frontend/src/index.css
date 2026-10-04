@@ -44,6 +44,13 @@
   box-sizing: border-box;
 }
 
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
 html,
 body {
   margin: 0;
@@ -2969,4 +2976,26 @@ button.check-box:active {
   flex: 1;
   min-width: 0;
   font-size: 13px;
+}
+
+/* stop a running ask */
+.stop-btn {
+  background: var(--coral);
+  color: #1c1a21;
+}
+
+/* native dropdowns: themed list, readable on dark palettes */
+:root[data-dark] {
+  color-scheme: dark;
+}
+select {
+  background: var(--field);
+  color: var(--text);
+}
+select option {
+  background: var(--win);
+  color: var(--text);
+}
+.voice-head {
+  font-size: inherit;
 }

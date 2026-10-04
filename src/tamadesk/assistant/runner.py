@@ -118,11 +118,27 @@ def _env() -> dict:
     return {k: v for k, v in os.environ.items() if k not in {"ANTHROPIC_API_KEY", "CLAUDE_CODE_SIMPLE"}}
 
 
-def stream(s: Settings, cmd: list[str]) -> Iterator[dict]:
+RUNNING: dict[int, subprocess.Popen] = {}  # chat id -> its live claude run, so the user can stop it
+_stopped: set[int] = set()
+
+
+def stop(key: int) -> bool:
+    """Stop a running ask. Its stream then ends with {type: stopped}."""
+    proc = RUNNING.get(key)
+    if proc is None or proc.poll() is not None:
+        return False
+    _stopped.add(key)
+    proc.kill()
+    return True
+
+
+def stream(s: Settings, cmd: list[str], key: int | None = None) -> Iterator[dict]:
     """Run claude and translate its stream-json into small UI events:
-    {type: session|text|tool|done|error}."""
+    {type: session|text|tool|done|error|stopped}."""
     proc = subprocess.Popen(cmd, cwd=s.home, env=_env(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, bufsize=1)  # fmt: skip
+    if key is not None:
+        RUNNING[key] = proc
     try:
         for line in proc.stdout:
             try:
@@ -144,11 +160,16 @@ def stream(s: Settings, cmd: list[str]) -> Iterator[dict]:
                 yield {"type": "done", "text": no_emoji(ev.get("result") or ""), "error": bool(ev.get("is_error")),
                        "subtype": ev.get("subtype"), "session_id": ev.get("session_id"), "raw": ev}  # fmt: skip
         proc.wait(timeout=10)
-        if proc.returncode not in (0, None):
+        if key in _stopped:
+            yield {"type": "stopped"}
+        elif proc.returncode not in (0, None):
             yield {"type": "error", "text": (proc.stderr.read() or "claude exited with an error")[-400:]}
     finally:
         if proc.poll() is None:
             proc.kill()
+        if key is not None:
+            RUNNING.pop(key, None)
+            _stopped.discard(key)
 
 
 # what an unattended run (a scheduled agent tab) may use: look things up, never change the desk

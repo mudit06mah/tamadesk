@@ -234,7 +234,7 @@ function UpNext({ state, notify, refresh }: { state: State; notify: (t: string, 
     try {
       if (r.action === 'answer') {
         const thread = r.draft_id ? ` Reply in the same thread (reply_to ${r.draft_id}).` : ` Write to ${r.from}.`
-        askBolt(`${r.title}: "${r.detail}"\n\n${r.snippet}\n\nDraft my answer in Mail.${thread} If they're asking to meet, offer two or three times and keep it short.`, true)
+        askBolt(`${r.title}: "${r.detail}"\n\n${r.snippet}\n\nDraft my answer in Mail.${thread} If they're asking to meet, offer two or three times and keep it short.`)
         await api.inboxDone(r.id)
       } else if (r.action === 'seen') {
         await api.inboxDone(r.id)
