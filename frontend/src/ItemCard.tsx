@@ -1,8 +1,8 @@
 // One item from a module tab, plus the one hook that performs its actions. Feed, deck and
 // Today's picks all render this, so every view gets the same buttons, sounds and motion.
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
-import { api, askBolt, type Mod, type ModItem } from './api'
+import { api, askBolt, type Mod, type ModItem, type Stage } from './api'
 import { useFx } from './fx/Fx'
 import type { Toast } from './util'
 
@@ -46,6 +46,15 @@ export function useItemActions(notify: (t: string, k?: Toast['kind']) => void, o
   return { run, busy, summaries }
 }
 
+const STAGE: Record<Stage, string> = {
+  emailed: 'emailed',
+  applied: 'applied',
+  replied: 'they replied',
+  interview: 'interview',
+  rejected: 'closed',
+  done: 'done',
+}
+
 const LABEL: Record<Act, string> = { save: '♥ keep', skip: '✕ skip', done: '✓ done', todo: '+ todo', summarize: '✦ tl;dr', draft: '@ email them' }
 
 export function ItemCard({
@@ -61,12 +70,22 @@ export function ItemCard({
   busy: boolean
   summary?: ModItem['data']['summary']
 }) {
+  const fx = useFx()
   const sum = summary ?? it.data.summary
+  const [stage, setStage] = useState<Stage | null>(it.stage)
+  const [asking, setAsking] = useState(false) // after "apply ↗": did you?
+  const mark = async (s: Stage) => {
+    await api.itemStage(it.id, s)
+    setStage(s)
+    setAsking(false)
+    fx.sound('stamp')
+  }
   const acts = mod.actions.filter((a): a is Act => a !== 'open' && (it.status === 'new' || (a !== 'save' && a !== 'skip')))
   return (
     <div className="item">
       <div className="item-top">
         <span className="tag">{it.source}</span>
+        {stage && <span className={`stage stage-${stage}`}>{STAGE[stage]}</span>}
         {it.why.map((w) => (
           <span key={w} className="why" title="why it ranked up">
             {w}
@@ -102,9 +121,14 @@ export function ItemCard({
           </motion.button>
         ))}
         {it.data.apply_url && (
-          <a className="btn tiny solid apply" href={it.data.apply_url} target="_blank" rel="noreferrer">
+          <a className="btn tiny solid apply" href={it.data.apply_url} target="_blank" rel="noreferrer" onClick={() => !stage && setTimeout(() => setAsking(true), 800)}>
             apply ↗
           </a>
+        )}
+        {it.data.apply_url && !stage && !asking && (
+          <button className="btn tiny ghost" title="Already applied elsewhere? Mark it" onClick={() => mark('applied')}>
+            mark applied
+          </button>
         )}
         {it.data.discussion && (
           <a className="btn tiny ghost" href={it.data.discussion} target="_blank" rel="noreferrer">
@@ -112,6 +136,19 @@ export function ItemCard({
           </a>
         )}
       </div>
+      <AnimatePresence>
+        {asking && (
+          <motion.div className="applied-ask" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+            <span>Did you apply?</span>
+            <button className="btn tiny solid" onClick={() => mark('applied')}>
+              yes, applied
+            </button>
+            <button className="btn tiny ghost" onClick={() => setAsking(false)}>
+              not yet
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -2757,3 +2757,216 @@ button.check-box:active {
     grid-template-columns: 1fr;
   }
 }
+
+/* ----------------------------------------------------------------- journeys: stages, Up next, threads */
+.stage {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 7px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: #1c1a21;
+  white-space: nowrap;
+}
+.stage-applied,
+.stage-emailed,
+.stage-followup,
+.stage-reply {
+  background: var(--accent-soft);
+}
+.stage-replied,
+.stage-interview {
+  background: var(--sage-strong);
+}
+.stage-rejected,
+.stage-bounce {
+  background: color-mix(in srgb, var(--coral) 60%, var(--win));
+}
+.stage-done,
+.stage-update {
+  background: var(--win-2);
+}
+.item-top .stage {
+  margin-left: 6px;
+}
+
+.applied-ask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 2px dashed var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--sage) 50%, var(--win));
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.thread-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.thread-line a {
+  text-decoration: none;
+}
+.thread-line a:hover {
+  text-decoration: underline;
+}
+.sent-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.next-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.next-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--win-2);
+  color: var(--text);
+}
+.next-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.next-text > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.next-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: var(--butter);
+}
+.next-interview .next-dot,
+.next-reply .next-dot {
+  background: var(--sage-strong);
+  animation: blink-dot 1.4s steps(2) infinite;
+}
+.next-bounce .next-dot {
+  background: var(--coral);
+}
+.next-kept .next-dot,
+.next-drafts .next-dot {
+  background: var(--accent-soft);
+}
+@keyframes blink-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .next-dot {
+    animation: none !important;
+  }
+}
+
+/* the tab title is its own rename field */
+.tab-name {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.tab-name input {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px dashed transparent;
+  padding: 0;
+  min-width: 0;
+  max-width: 100%;
+  outline: none;
+}
+.tab-name input:hover,
+.tab-name input:focus {
+  border-bottom-color: var(--muted);
+}
+.tab-name-pen {
+  font-size: 16px;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.tab-name:hover .tab-name-pen,
+.tab-name:focus-within .tab-name-pen {
+  opacity: 1;
+}
+
+/* voice: folded overview, removable points, your rules */
+.voice-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.voice-head > .small {
+  white-space: nowrap;
+  flex: none;
+}
+.voice-more {
+  overflow: hidden;
+  margin-top: 8px;
+}
+.voice-points {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 13px;
+}
+.voice-points li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px dashed color-mix(in srgb, var(--line) 25%, transparent);
+}
+.voice-points.rules li::before {
+  content: '>';
+  color: var(--muted);
+  font-family: 'VT323', monospace;
+}
+.voice-points.rules li span {
+  flex: 1;
+}
+.rule-add {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.rule-add input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}

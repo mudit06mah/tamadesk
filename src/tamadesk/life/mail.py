@@ -14,6 +14,7 @@ from email.utils import formataddr, make_msgid
 
 from tamadesk.core import db
 from tamadesk.core.config import Settings
+from tamadesk.life import pipeline
 
 OPT_OUT = "If this isn't relevant, just say so and I won't follow up."
 
@@ -54,16 +55,24 @@ def sent_today(conn: sqlite3.Connection) -> int:
     ).fetchone()[0]
 
 
-def build(s: Settings, d: sqlite3.Row) -> EmailMessage:
+def build(s: Settings, d: sqlite3.Row, parent: sqlite3.Row | None = None) -> EmailMessage:
     body = d["body"].rstrip()
-    if d["item_id"] and OPT_OUT not in body:  # outreach to a lead: always offer a way out
+    if (
+        d["item_id"] and d["kind"] == "first" and OPT_OUT not in body
+    ):  # first outreach: always offer a way out
         body += f"\n\n{OPT_OUT}"
     to = d["to_email"] if not s.mail.dry_run else s.mail.address
     m = EmailMessage()
     m["From"] = formataddr((s.mail.from_name, s.mail.address))
     m["To"] = formataddr((d["to_name"] or "", to))
-    m["Subject"] = ("[dry run → " + d["to_email"] + "] " if s.mail.dry_run else "") + d["subject"]
+    subject = d["subject"]
+    if parent is not None and not subject.lower().startswith("re:"):
+        subject = f"Re: {parent['subject']}"
+    m["Subject"] = ("[dry run → " + d["to_email"] + "] " if s.mail.dry_run else "") + subject
     m["Message-ID"] = make_msgid(domain=s.mail.address.split("@")[-1])
+    if parent is not None and parent["message_id"]:  # follow-ups and replies stay in the same thread
+        m["In-Reply-To"] = parent["message_id"]
+        m["References"] = parent["message_id"]
     m.set_content(body)
     return m
 
@@ -80,7 +89,12 @@ def send(s: Settings, conn: sqlite3.Connection, draft_id: int, *, verified: bool
         raise MailError("this address was guessed: check it yourself and tick 'I checked this address'")
     if sent_today(conn) >= s.mail.daily_cap:
         raise MailError(f"daily cap of {s.mail.daily_cap} emails reached")
-    msg = build(s, d)
+    parent = (
+        conn.execute("SELECT * FROM drafts WHERE id = ?", (d["parent_id"],)).fetchone()
+        if d["parent_id"]
+        else None
+    )
+    msg = build(s, d, parent)
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
             smtp.login(s.mail.address, get_secret(s, "gmail_app_password").replace(" ", ""))
@@ -90,8 +104,9 @@ def send(s: Settings, conn: sqlite3.Connection, draft_id: int, *, verified: bool
         raise MailError(f"Gmail said: {e}") from e
     with db.transaction(conn):
         conn.execute(
-            "UPDATE drafts SET status = 'sent', sent_at = datetime('now'), error = NULL WHERE id = ?",
-            (draft_id,),
+            "UPDATE drafts SET status = 'sent', sent_at = datetime('now'), error = NULL, message_id = ? WHERE id = ?",
+            (msg["Message-ID"], draft_id),
         )
+        pipeline.set_stage(conn, d["item_id"], "emailed", why=f"to {d['to_email']}")
         db.event(conn, "mail_sent", ref_id=draft_id, detail=d["subject"], xp=0 if s.mail.dry_run else 5)
     return {"dry_run": s.mail.dry_run, "to": msg["To"]}

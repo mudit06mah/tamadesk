@@ -79,7 +79,7 @@ export function ModulePage({ mod, notify, onChange, onDeleted }: Props) {
   return (
     <div className="modpage">
       <header className="screen-head">
-        <h1>{mod.name}</h1>
+        <TabName mod={mod} notify={notify} onChange={onChange} />
         <div className="mod-tools">
           <div className="seg-tabs" role="tablist">
             {(['new', 'saved'] as const).map((t) => (
@@ -197,6 +197,52 @@ export function ModulePage({ mod, notify, onChange, onDeleted }: Props) {
         notify={notify}
       />
     </div>
+  )
+}
+
+/** The tab's title is its name field: click, type, Enter (Esc puts it back). */
+function TabName({ mod, notify, onChange }: Pick<Props, 'mod' | 'notify' | 'onChange'>) {
+  const fx = useFx()
+  const [name, setName] = useState(mod.name)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- follow renames made elsewhere (e.g. by Bolt)
+    setName(mod.name)
+  }, [mod.name])
+  const save = async () => {
+    const n = name.trim()
+    if (!n || n === mod.name) return setName(mod.name)
+    try {
+      await api.renameModule(mod.id, n)
+      fx.sound('stamp')
+      onChange()
+    } catch (e) {
+      notify((e as Error).message, 'err')
+      setName(mod.name)
+    }
+  }
+  return (
+    <h1 className="tab-name">
+      <input
+        aria-label="Tab name (click to rename)"
+        title="Click to rename"
+        value={name}
+        maxLength={24}
+        size={Math.max(4, name.length)}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key === 'Escape') {
+            const el = e.currentTarget
+            setName(mod.name)
+            requestAnimationFrame(() => el.blur())
+          }
+        }}
+      />
+      <span className="tab-name-pen" aria-hidden>
+        ✎
+      </span>
+    </h1>
   )
 }
 

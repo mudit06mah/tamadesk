@@ -63,9 +63,10 @@ def search(s: Settings, conn: sqlite3.Connection, source: str, params: dict, lim
     return [_short(it) for it in sources.fetch({"type": source, **params})[:limit]]
 
 
-@tool("read_page", "Read a web page as plain text (Jina Reader). Use sparingly: pages are long.", {"url": S})
+@tool("read_page", "Read a web page as plain text (Jina Reader); for a YouTube link, the video's transcript. "
+      "Use sparingly: pages are long.", {"url": S})  # fmt: skip
 def read_page(s: Settings, conn: sqlite3.Connection, url: str) -> str:
-    return sources.read_page(url, 6000)
+    return sources.transcript(url, 8000) or sources.read_page(url, 6000)
 
 
 @tool("list_tabs", "The user's tabs (modules) with their sources and item counts.", {}, [])
@@ -267,6 +268,32 @@ def write_note(s: Settings, conn: sqlite3.Connection, title: str, markdown: str)
     return f"saved to Notes as '{title}' (#{nid})"
 
 
+@tool("pipeline", "Where the user's jobs and leads stand: what's been emailed or applied to, replies, interviews, "
+      "and anything waiting on them (Up next). Use for 'what's happening with my applications/outreach?'.", {}, [])  # fmt: skip
+def pipeline_status(s: Settings, conn: sqlite3.Connection) -> dict:
+    from tamadesk.life import upnext
+
+    rows = conn.execute("SELECT id, module, title, url, stage, stage_at FROM items WHERE stage IS NOT NULL "
+                        "ORDER BY stage_at DESC LIMIT 40").fetchall()  # fmt: skip
+    mail_in = conn.execute("SELECT id, kind, from_name, from_addr, subject, snippet, draft_id, item_id, status "
+                           "FROM inbox ORDER BY id DESC LIMIT 15").fetchall()  # fmt: skip
+    return {"items": [dict(r) for r in rows], "inbox": [dict(r) | {"snippet": (r["snippet"] or "")[:300]} for r in mail_in],
+            "up_next": upnext.up_next(conn)}  # fmt: skip
+
+
+@tool("set_stage", "Record where a job/lead stands when the user tells you (e.g. 'I applied to Linear'): "
+      "emailed|applied|replied|interview|rejected|done.", {"item_id": {"type": "integer"}, "stage": S})  # fmt: skip
+def set_stage(s: Settings, conn: sqlite3.Connection, item_id: int, stage: str) -> str:
+    from tamadesk.life import pipeline
+
+    with db.transaction(conn):
+        return (
+            "updated"
+            if pipeline.set_stage(conn, item_id, stage, why="you told me", manual=True)
+            else "no change"
+        )
+
+
 @tool("github_status", "The user's open GitHub work: their PRs (review decision, CI checks), issues assigned to "
       "them, PRs waiting for their review, PRs merged in the last week, and their own repos by last push.", {}, [])  # fmt: skip
 def github_status(s: Settings, conn: sqlite3.Connection) -> dict:
@@ -277,12 +304,22 @@ def github_status(s: Settings, conn: sqlite3.Connection) -> dict:
       "sent. to_email must be published on a page you saw (email_source = that URL); if you guessed it, set "
       "email_sure false. item_id links a lead from a tab.",
       {"subject": S, "body": S, "to_name": S, "to_email": S, "email_source": S, "email_sure": {"type": "boolean"},
-       "item_id": {"type": "integer"}}, ["subject", "body"])  # fmt: skip
+       "item_id": {"type": "integer"}, "reply_to": {"type": "integer", "description": "the sent draft id this "
+       "answers or follows up on: keeps the thread, recipient and item"}}, ["subject", "body"])  # fmt: skip
 def draft_email(s: Settings, conn: sqlite3.Connection, subject: str, body: str, **kw) -> str:
     from tamadesk.life.writer import clean
 
+    parent = kw.pop("reply_to", None)
+    kind = "first"
+    if parent and conn.execute("SELECT 1 FROM drafts WHERE id = ?", (parent,)).fetchone():
+        kind = (
+            "reply"
+            if conn.execute("SELECT 1 FROM inbox WHERE draft_id = ?", (parent,)).fetchone()
+            else "followup"
+        )
     with db.transaction(conn):
-        rid = actions.add_draft(conn, ask="bolt", subject=clean(subject), body=clean(body), **kw)
+        rid = actions.add_draft(conn, ask="bolt", subject=clean(subject), body=clean(body), parent_id=parent,
+                                kind=kind, **kw)  # fmt: skip
     return f"draft #{rid} saved to Mail"
 
 

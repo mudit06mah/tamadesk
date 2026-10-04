@@ -92,14 +92,28 @@ neon.
 - Outreach emails get an opt-out line.
 - Guessed addresses are flagged UNSURE until you check them.
 
+**From find to reply, without you stitching it together** (see [docs/journeys.md](docs/journeys.md)):
+- Every job or lead has a **stage**: emailed, applied, replied, interview, closed. Sending moves
+  it forward, and after **apply ↗** the card asks "did you apply?".
+- **Inbox check** (IMAP, the same app password, read-only, every 10 minutes) matches replies in
+  your threads, bounces, and "thanks for applying", interview and rejection mail from companies
+  in your pipeline. Anything else is never stored.
+- **Up next** on Today lists what's waiting on you, with one click for each: answer a reply (Bolt
+  drafts it *in the same thread*), write a follow-up when 4 work days pass without an answer
+  (two at most), send waiting drafts, or act on jobs you kept but never touched.
+
 - **Quick capture**: one box for everything.
   - `bought groceries, finally fixed the bug` goes to your daily log.
   - `todo send the invoice` adds a todo.
   - `remind me to stretch in 20 min` or `remind me to call mom at 6pm` sets a reminder.
 - **Todos** with XP, streaks and levels. Undoing a todo takes its XP back, so you can't farm it.
 - **Reminders** ring in the app and as a desktop notification.
-- **Your voice**: paste a few emails or essays you wrote (in Mail). tamadesk studies them once,
-  and every draft follows your style.
+- **Your voice**: tamadesk studies a few things you wrote (in Mail) plus your last 10 sent emails,
+  and every draft follows your style. Fold the overview open, remove any point that isn't you,
+  and add your own rules. Your rules always win.
+- **Videos**: YouTube channel tabs show each video's description, and **tl;dr** reads the
+  transcript (via yt-dlp, no login).
+- **Tabs**: click a tab's title to rename it.
 - **Evening recap**: your companion writes up your day and picks up to 3 small things for tomorrow.
 - **New Game setup**: you answer a few questions about yourself, pick a companion, and you're in.
 

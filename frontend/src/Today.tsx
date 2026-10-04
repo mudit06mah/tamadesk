@@ -1,8 +1,8 @@
 // Today: ask your companion anything at the top; below, what's left to do (todos, alarms) and what got
 // done (today's log, where finished todos land with a ✓), plus the evening recap.
 import { AnimatePresence, motion } from 'motion/react'
-import { useMemo, useState } from 'react'
-import { api, clock, when, type State, type Todo } from './api'
+import { useEffect, useMemo, useState } from 'react'
+import { api, askBolt, clock, when, type NextUp, type State, type Todo } from './api'
 import { AskPanel } from './Ask'
 import { type Mood } from './Companion'
 import { useFx } from './fx/Fx'
@@ -102,6 +102,7 @@ export function Today({
 
       <div className="day-grid">
         <div className="day-col">
+          <UpNext state={s} notify={notify} refresh={refresh} />
           <Win title={`todo.lst${s.today.open.length ? ` (${s.today.open.length})` : ''}`} id="win-todos">
             {s.today.open.length === 0 && ticked.length === 0 ? (
               <p className="muted mono">&gt; {done ? 'all clear. nice.' : 'no todos. type "todo …" above'}_</p>
@@ -211,5 +212,80 @@ export function Today({
         </div>
       </div>
     </div>
+  )
+}
+
+const VERB: Record<NextUp['action'], string> = { answer: 'draft a reply', seen: 'got it', followup: 'write follow-up', mail: 'open Mail', tab: 'open tab' }
+
+/** Everything waiting on you, from every journey: replies, interviews, follow-ups, drafts, stale kept items.
+ * Each row is one click to the next step. Refetched whenever the day's state changes. */
+function UpNext({ state, notify, refresh }: { state: State; notify: (t: string, k?: Toast['kind']) => void; refresh: () => Promise<void> }) {
+  const fx = useFx()
+  const [rows, setRows] = useState<NextUp[]>([])
+  const [busy, setBusy] = useState<string | null>(null)
+  useEffect(() => {
+    void api.next().then(setRows).catch(() => setRows([]))
+  }, [state])
+  if (!rows.length) return null
+  const key = (r: NextUp) => `${r.kind}${r.id}${r.module ?? ''}`
+
+  const go = async (r: NextUp) => {
+    setBusy(key(r))
+    try {
+      if (r.action === 'answer') {
+        const thread = r.draft_id ? ` Reply in the same thread (reply_to ${r.draft_id}).` : ` Write to ${r.from}.`
+        askBolt(`${r.title}: "${r.detail}"\n\n${r.snippet}\n\nDraft my answer in Mail.${thread} If they're asking to meet, offer two or three times and keep it short.`, true)
+        await api.inboxDone(r.id)
+      } else if (r.action === 'seen') {
+        await api.inboxDone(r.id)
+        fx.sound('check')
+      } else if (r.action === 'followup') {
+        await api.followup(r.id)
+        fx.sound('send')
+        notify('Follow-up drafted in the same thread. Check it in Mail.')
+        location.hash = 'mail'
+      } else {
+        location.hash = r.action === 'mail' ? 'mail' : `m:${r.module}`
+      }
+      setRows(await api.next())
+      await refresh()
+    } catch (e) {
+      notify((e as Error).message, 'err')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Win title={`up_next.q (${rows.length})`} id="win-next">
+      <ul className="next-list">
+        <AnimatePresence initial={false}>
+          {rows.map((r, i) => (
+            <motion.li
+              key={key(r)}
+              className={`next-${r.kind}`}
+              layout
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0, transition: { delay: 0.04 * i } }}
+              exit={{ opacity: 0, x: 40, height: 0 }}
+            >
+              <span className="next-dot" aria-hidden />
+              <span className="next-text">
+                <b>{r.title}</b>
+                {r.detail && <span className="muted small">{r.detail}</span>}
+              </span>
+              {r.action === 'followup' && (
+                <button className="icon-x" title="No follow-up for this one" onClick={async () => (await api.noFollowup(r.id), fx.sound('drop'), setRows(await api.next()))}>
+                  ×
+                </button>
+              )}
+              <motion.button className={`btn tiny ${r.action === 'answer' ? 'solid' : ''}`} whileTap={{ scale: 0.9 }} disabled={busy === key(r)} onClick={() => go(r)}>
+                {busy === key(r) ? <span className="blink">…</span> : VERB[r.action]}
+              </motion.button>
+            </motion.li>
+          ))}
+        </AnimatePresence>
+      </ul>
+    </Win>
   )
 }

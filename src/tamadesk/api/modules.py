@@ -126,6 +126,22 @@ def replace_spec(module_id: str, body: dict, conn: Conn) -> dict:
         raise HTTPException(422, str(e)) from e
 
 
+class NameIn(BaseModel):
+    name: str
+
+
+@router.patch("/modules/{module_id}/name")
+def rename(module_id: str, b: NameIn) -> dict:
+    """Just the tab's name: nothing is refetched or re-ranked."""
+    old = _module_or_404(module_id)
+    try:
+        m = spec.Module(**old.model_dump() | {"name": b.name.strip()})
+    except ValidationError as e:
+        raise HTTPException(422, "a name is 1 to 24 characters") from e
+    spec.save(get_settings(), m)
+    return m.model_dump()
+
+
 def _replace(conn, m: spec.Module) -> dict:
     """Save a changed tab: old errors are cleared, it's re-ranked, rescheduled and refreshed now."""
     s = get_settings()

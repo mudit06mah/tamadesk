@@ -65,15 +65,21 @@ def _about(conn: sqlite3.Connection) -> str:
 
 def build_voice(conn: sqlite3.Connection, brain: Brain) -> dict:
     samples = conn.execute("SELECT kind, title, body FROM samples ORDER BY id").fetchall()
-    if not samples:
-        raise ValueError("add at least one writing sample first")
-    text = "\n\n".join(f"### {r['kind']}: {r['title'] or 'untitled'}\n{r['body'][:4000]}" for r in samples)
+    # what they actually sent (after their own edits) is the best evidence of their voice
+    sent = conn.execute("SELECT 'sent email' AS kind, subject AS title, body FROM drafts WHERE status = 'sent' "
+                        "ORDER BY sent_at DESC LIMIT 10").fetchall()  # fmt: skip
+    if not samples and not sent:
+        raise ValueError("add a writing sample (or send an email from Mail) first")
+    text = "\n\n".join(
+        f"### {r['kind']}: {r['title'] or 'untitled'}\n{r['body'][:4000]}" for r in [*samples, *sent]
+    )
     voice = brain.ask(
         "Study these writing samples and describe the author's voice so another writer could "
         "imitate it closely. Quote real phrases they use.\n\n"
         f"About them:\n{_about(conn)}\n\nSamples:\n{text}",
         VOICE_SCHEMA,
     )
+    voice = {k: [clean(x) for x in v] if isinstance(v, list) else clean(v) for k, v in voice.items()}
     db.set_profile(conn, "voice", voice)
     return voice
 

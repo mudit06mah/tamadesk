@@ -17,10 +17,29 @@ export type MailDraft = {
   email_sure: number
   item_id: number | null
   status: 'draft' | 'sent'
+  kind: 'first' | 'followup' | 'reply'
+  parent_id: number | null
+  item_title: string | null
+  item_module: string | null
+  heard: InboxKind | null
   sent_at: string | null
   error: string | null
   created_at: string
 }
+export type InboxKind = 'reply' | 'interview' | 'applied' | 'rejected' | 'bounce' | 'update'
+export type NextUp = {
+  kind: InboxKind | 'followup' | 'drafts' | 'kept'
+  id: number
+  title: string
+  detail: string
+  snippet?: string
+  draft_id?: number | null
+  module?: string
+  from?: string
+  action: 'answer' | 'seen' | 'followup' | 'mail' | 'tab'
+}
+export type Stage = 'emailed' | 'applied' | 'replied' | 'interview' | 'rejected' | 'done'
+export type VoiceView = { voice: Voice | null; rules: string[] }
 export type MailBox = { items: MailDraft[]; ready: boolean; address: string; dry_run: boolean; daily_cap: number; sent_today: number }
 export type Step = { name: string; input: Record<string, unknown> }
 export type ChatMsg = { id?: number; role: 'user' | 'assistant'; text: string; steps?: Step[]; cost_usd?: number | null; tokens?: number | null }
@@ -69,6 +88,7 @@ export type ModItem = {
   why: string[]
   status: string
   published_at: string | null
+  stage: Stage | null
   data: {
     summary?: { summary: string; why_you: string }
     discussion?: string
@@ -149,7 +169,8 @@ export const api = {
   samples: () => call<Sample[]>('/samples'),
   addSample: (s: { kind: string; title: string; body: string }) => post<{ id: number }>('/samples', s),
   deleteSample: (id: number) => call(`/samples/${id}`, { method: 'DELETE' }),
-  voice: () => call<Voice | null>('/voice'),
+  voice: () => call<VoiceView>('/voice'),
+  editVoice: (v: Partial<Voice> & { rules?: string[] }) => call<VoiceView>('/voice', { method: 'PUT', body: JSON.stringify(v) }),
   buildVoice: () => post<Voice>('/voice/build'),
   mail: (status: 'draft' | 'sent') => call<MailBox>(`/mail?status=${status}`),
   newMail: (d: Partial<MailDraft>) => post<{ id: number }>('/mail', d),
@@ -158,6 +179,13 @@ export const api = {
   sendMail: (id: number, verified: boolean) => post<{ dry_run: boolean; to: string }>(`/mail/${id}/send`, { verified }),
   dropMail: (id: number) => post(`/mail/${id}/drop`),
   redraftMail: (id: number, note: string) => post<{ subject: string; body: string }>(`/mail/${id}/redraft`, { note }),
+  followup: (id: number) => post<{ id: number }>(`/mail/${id}/followup`),
+  noFollowup: (id: number) => post(`/mail/${id}/no-followup`),
+  inboxCheck: () => post<{ found: number }>('/mail/inbox/check'),
+  inboxDone: (id: number) => post(`/mail/inbox/${id}/done`),
+  next: () => call<NextUp[]>('/next'),
+  itemStage: (id: number, stage: Stage) => post<{ changed: boolean }>(`/items/${id}/stage`, { stage }),
+  renameModule: (id: string, name: string) => call<Mod>(`/modules/${id}/name`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   mailSetup: (b: { address: string; from_name: string; app_password: string; dry_run: boolean; daily_cap: number }) =>
     call<{ ok: boolean; ready: boolean }>('/mail/setup', { method: 'PUT', body: JSON.stringify(b) }),
   chats: () => call<{ id: number; title: string; updated_at: string }[]>('/chats'),

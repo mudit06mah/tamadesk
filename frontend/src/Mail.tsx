@@ -3,7 +3,7 @@
 // Not right? "Redraft" takes your note; notes are remembered as writing rules for every future draft.
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useState } from 'react'
-import { api, askBolt, when, type MailBox, type MailDraft, type Sample, type Voice } from './api'
+import { api, askBolt, when, type InboxKind, type MailBox, type MailDraft, type Sample, type VoiceView } from './api'
 import { useCompanion } from './Companion'
 import { useFx } from './fx/Fx'
 import { DocsPanel } from './Docs'
@@ -19,6 +19,22 @@ export function Mail({ notify, onChange }: Props) {
   const [tab, setTab] = useState<'draft' | 'sent'>('draft')
   const [box, setBox] = useState<MailBox | null>(null)
   const [setup, setSetup] = useState(false)
+  const [checking, setChecking] = useState(false)
+
+  const checkInbox = async () => {
+    setChecking(true)
+    try {
+      const r = await api.inboxCheck()
+      fx.sound(r.found ? 'sparkle' : 'tap')
+      notify(r.found ? `${r.found} new for things you started. See Up next on Today.` : 'Nothing new about your threads.')
+      await load()
+      onChange()
+    } catch (e) {
+      notify((e as Error).message, 'err')
+    } finally {
+      setChecking(false)
+    }
+  }
 
   const load = useCallback(async () => setBox(await api.mail(tab)), [tab])
   useEffect(() => {
@@ -40,6 +56,11 @@ export function Mail({ notify, onChange }: Props) {
                 </button>
               ))}
             </div>
+            {box?.ready && (
+              <button className="btn tiny ghost" disabled={checking} onClick={checkInbox} title="Look for replies and company mail now (also runs every 10 minutes)">
+                {checking ? <span className="blink">checking…</span> : '⇣ check inbox'}
+              </button>
+            )}
             {box && (
               <button className={`btn tiny ${box.ready ? 'ghost' : 'solid'}`} onClick={() => setSetup(true)}>
                 {box.ready ? `${box.dry_run ? 'dry run · ' : ''}${box.sent_today}/${box.daily_cap} today` : 'Connect Gmail'}
@@ -82,12 +103,7 @@ export function Mail({ notify, onChange }: Props) {
                       onSetup={() => setSetup(true)}
                     />
                   ) : (
-                    <div className="item sent-row">
-                      <b>{d.subject}</b>
-                      <span className="muted small">
-                        to {d.to_name || d.to_email} · {d.sent_at ? when(d.sent_at) : ''}
-                      </span>
-                    </div>
+                    <SentRow d={d} notify={notify} onChange={load} />
                   )}
                 </motion.li>
               ))}
@@ -123,7 +139,8 @@ function DraftCard({ d, ready, notify, onGone, onSetup }: { d: MailDraft; ready:
   const [checked, setChecked] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [rewriting, setRewriting] = useState(false)
-  const unsure = !d.email_sure && f.to_email === (d.to_email ?? '')
+  // only a guessed address that's still there needs the check (an empty field just needs filling in)
+  const unsure = !d.email_sure && !!f.to_email && f.to_email === (d.to_email ?? '')
   const save = () => api.editMail(d.id, f).catch((e: Error) => notify(e.message, 'err'))
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value })
 
@@ -160,6 +177,7 @@ function DraftCard({ d, ready, notify, onGone, onSetup }: { d: MailDraft; ready:
 
   return (
     <div className={`item draft-card ${rewriting ? 'rewriting' : ''}`}>
+      <ThreadLine d={d} />
       <div className="draft-to">
         <span className="to-label">TO</span>
         <input value={f.to_name} onChange={set('to_name')} onBlur={save} placeholder="name" />
@@ -234,6 +252,73 @@ function DraftCard({ d, ready, notify, onGone, onSetup }: { d: MailDraft; ready:
   )
 }
 
+const HEARD: Record<InboxKind, string> = {
+  reply: 'replied',
+  interview: 'wants to talk',
+  applied: 'application received',
+  rejected: 'passed',
+  bounce: 'bounced',
+  update: 'news',
+}
+
+/** What a draft belongs to: a follow-up or reply in a thread, and the tab item it's for. */
+function ThreadLine({ d }: { d: MailDraft }) {
+  if (d.kind === 'first' && !d.item_title) return null
+  return (
+    <div className="thread-line small">
+      {d.kind !== 'first' && <span className={`stage stage-${d.kind}`}>{d.kind === 'followup' ? 'follow-up' : 'reply'} in thread</span>}
+      {d.item_title && (
+        <a className="muted" href={`#m:${d.item_module}`} title="Open the tab it came from">
+          for: {d.item_title.slice(0, 70)}
+        </a>
+      )}
+    </div>
+  )
+}
+
+function SentRow({ d, notify, onChange }: { d: MailDraft; notify: Props['notify']; onChange: () => void }) {
+  const fx = useFx()
+  const [busy, setBusy] = useState(false)
+  return (
+    <div className="item sent-row">
+      <ThreadLine d={d} />
+      <b>{d.subject}</b>
+      <span className="muted small">
+        to {d.to_name || d.to_email} · {d.sent_at ? when(d.sent_at) : ''}
+      </span>
+      <div className="item-acts">
+        {d.heard ? (
+          <span className={`stage stage-${d.heard}`}>{HEARD[d.heard]}</span>
+        ) : (
+          <span className="muted small">no reply yet</span>
+        )}
+        <span className="grow" />
+        {(!d.heard || d.heard === 'applied') && d.kind !== 'reply' && (
+          <button
+            className="btn tiny"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              try {
+                await api.followup(d.id)
+                fx.sound('send')
+                notify('A follow-up in the same thread is waiting in drafts.')
+                onChange()
+              } catch (e) {
+                notify((e as Error).message, 'err')
+              } finally {
+                setBusy(false)
+              }
+            }}
+          >
+            {busy ? <span className="blink">writing…</span> : '↻ write a follow-up'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function SetupDialog({ open, box, onClose, onSaved, notify }: { open: boolean; box: MailBox | null; onClose: () => void; onSaved: () => void; notify: Props['notify'] }) {
   const [f, setF] = useState({ address: '', from_name: '', app_password: '', dry_run: true, daily_cap: 20 })
   useEffect(() => {
@@ -293,41 +378,114 @@ function SetupDialog({ open, box, onClose, onSaved, notify }: { open: boolean; b
   )
 }
 
-/** The writing samples the voice profile is built from (moved here from the old Write tab). */
+type Points = 'do' | 'dont' | 'phrases'
+const POINTS: [Points, string][] = [
+  ['do', 'does'],
+  ['dont', 'avoids'],
+  ['phrases', 'sounds like'],
+]
+
+/** How you write: studied from your samples and the emails you actually sent, and steerable by you.
+ * The overview folds away; every point can be removed; your own rules always win. */
 function VoicePanel({ notify }: { notify: Props['notify'] }) {
   const fx = useFx()
   const buddy = useCompanion()
   const [samples, setSamples] = useState<Sample[]>([])
-  const [voice, setVoice] = useState<Voice | null>(null)
+  const [vv, setVv] = useState<VoiceView>({ voice: null, rules: [] })
+  const [open, setOpen] = useState(false)
+  const [rule, setRule] = useState('')
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
   const [sample, setSample] = useState({ kind: 'email', title: '', body: '' })
+  const voice = vv.voice
 
   const load = async () => {
     const [s, v] = await Promise.all([api.samples(), api.voice()])
     setSamples(s)
-    setVoice(v)
+    setVv(v)
   }
   useEffect(() => {
     void load()
   }, [])
 
+  const change = async (patch: Parameters<typeof api.editVoice>[0], sound: 'drop' | 'capture' = 'drop') => {
+    try {
+      setVv(await api.editVoice(patch))
+      fx.sound(sound)
+    } catch (e) {
+      notify((e as Error).message, 'err')
+    }
+  }
+
   return (
     <Win title="voice.cfg">
       {voice ? (
         <div className="voice">
-          <p>{voice.summary}</p>
-          <div className="chips">
-            {voice.traits.map((t) => (
-              <span key={t} className="chip on">
-                {t}
-              </span>
-            ))}
-          </div>
+          <button className="voice-head" aria-expanded={open} onClick={() => (fx.sound(open ? 'close' : 'open'), setOpen(!open))}>
+            <span className="chips">
+              {voice.traits.map((t) => (
+                <span key={t} className="chip on">
+                  {t}
+                </span>
+              ))}
+            </span>
+            <span className="muted small">{open ? '▴ less' : '▾ details'}</span>
+          </button>
+          <AnimatePresence initial={false}>
+            {open && (
+              <motion.div className="voice-more" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
+                <p>{voice.summary}</p>
+                {POINTS.map(([k, label]) =>
+                  voice[k].length ? (
+                    <div key={k}>
+                      <div className="field-label">{label}</div>
+                      <ul className="voice-points">
+                        {voice[k].map((x, i) => (
+                          <li key={x}>
+                            <span>{k === 'phrases' ? `“${x}”` : x}</span>
+                            <button className="icon-x" title="Not me: remove" onClick={() => change({ [k]: voice[k].filter((_, j) => j !== i) })}>
+                              ×
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null,
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       ) : (
-        <p className="muted">Add 2 or 3 things you wrote and let {buddy.name} study them, so emails sound like you.</p>
+        <p className="muted">Add 2 or 3 things you wrote (or send a few emails) and let {buddy.name} study them, so drafts sound like you.</p>
       )}
+
+      <div className="field-label">your rules ({vv.rules.length}) · always followed</div>
+      <ul className="voice-points rules">
+        {vv.rules.map((r, i) => (
+          <li key={r}>
+            <span>{r}</span>
+            <button className="icon-x" title="Drop this rule" onClick={() => change({ rules: vv.rules.filter((_, j) => j !== i) })}>
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form
+        className="rule-add"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (!rule.trim()) return
+          void change({ rules: [...vv.rules, rule.trim()] }, 'capture')
+          setRule('')
+        }}
+      >
+        <input value={rule} onChange={(e) => setRule(e.target.value)} placeholder="add a rule: e.g. never open with 'I hope this finds you well'" />
+        <button className="btn tiny" disabled={!rule.trim()}>
+          + rule
+        </button>
+      </form>
+
       <div className="field-label">samples ({samples.length})</div>
       <ul className="sample-list">
         {samples.map((s) => (
@@ -346,11 +504,14 @@ function VoicePanel({ notify }: { notify: Props['notify'] }) {
         </button>
         <button
           className="btn solid tiny"
-          disabled={!samples.length || busy}
+          disabled={busy}
+          title="Reads your samples and your last 10 sent emails"
           onClick={async () => {
             setBusy(true)
             try {
-              setVoice(await api.buildVoice())
+              await api.buildVoice()
+              await load()
+              setOpen(true)
               fx.sound('levelup')
             } catch (e) {
               notify((e as Error).message, 'err')

@@ -56,6 +56,7 @@ def uid(*parts: str) -> str:
 # ---------------------------------------------------------------- feeds (RSS 2.0 + Atom)
 
 ATOM = "{http://www.w3.org/2005/Atom}"
+MEDIA = "{http://search.yahoo.com/mrss/}"  # YouTube puts video descriptions here
 
 
 def _text(e: ET.Element, tag: str) -> str:
@@ -79,7 +80,7 @@ def parse_feed(xml: str, limit: int = 30) -> list[Item]:
         out.append(Item(
             ext_id=uid(t("guid") or t("id") or link or title), title=title, url=link.strip(),
             subtitle=", ".join(authors[:4]) + (" et al." if len(authors) > 4 else "") or clean(t("author"), 80),
-            body=clean(t("description") or t("summary") or t("content")),
+            body=clean(t("description") or t("summary") or t("content") or e.findtext(f".//{MEDIA}description") or ""),
             published=(t("pubDate") or t("published") or t("updated")).strip(),
         ))  # fmt: skip
     return out
@@ -416,6 +417,33 @@ def agent(task: str, limit: int = 8) -> list[Item]:
         conn.close()
     return [Item(ext_id=uid(i["url"]), title=clean(i["title"], 200), url=i["url"], subtitle=i.get("subtitle", ""),
                  body=clean(i.get("body", ""))) for i in out["items"][:limit]]  # fmt: skip
+
+
+YOUTUBE = re.compile(r"(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)([\w-]{11})")
+
+
+def transcript(url: str, limit: int = 12000) -> str:
+    """A YouTube video's captions (yt-dlp, which agent-reach installs; no login). '' if unavailable."""
+    if not YOUTUBE.search(url) or not shutil.which("yt-dlp"):
+        return ""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run(["yt-dlp", "--skip-download", "--write-auto-subs", "--write-subs", "--sub-langs", "en.*,en",
+                        "--sub-format", "vtt", "-o", f"{tmp}/v", url],
+                       capture_output=True, timeout=90, check=False)  # fmt: skip
+        vtt = next(Path(tmp).glob("*.vtt"), None)
+        if vtt is None:
+            return ""
+        lines, seen = [], set()
+        for ln in vtt.read_text(errors="replace").splitlines():
+            ln = re.sub(r"<[^>]+>", "", ln).strip()
+            if not ln or "-->" in ln or ln.startswith(("WEBVTT", "Kind:", "Language:")) or ln in seen:
+                continue
+            seen.add(ln)  # auto captions repeat each line as it scrolls
+            lines.append(ln)
+        return " ".join(lines)[:limit]
 
 
 def read_page(url: str, limit: int = 6000) -> str:

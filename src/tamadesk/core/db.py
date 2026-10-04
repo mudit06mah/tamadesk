@@ -223,6 +223,38 @@ MIGRATIONS: list[str] = [
         SELECT title || ' ' || coalesce(body, ''), module, 'kept', 'i:' || id, date(coalesce(decided_at, created_at), 'localtime')
         FROM items WHERE status = 'saved';
     """,
+    # 6: journeys. Items get a pipeline stage; drafts become threads; the inbox keeps only mail that
+    # belongs to something the user started (replies in their threads, news from their pipeline).
+    """
+    ALTER TABLE items ADD COLUMN stage TEXT;      -- emailed|applied|replied|interview|rejected|done
+    ALTER TABLE items ADD COLUMN stage_at TEXT;
+    ALTER TABLE drafts ADD COLUMN message_id TEXT;
+    ALTER TABLE drafts ADD COLUMN parent_id INTEGER;
+    ALTER TABLE drafts ADD COLUMN kind TEXT NOT NULL DEFAULT 'first';   -- first|followup|reply
+    ALTER TABLE drafts ADD COLUMN followup_off INTEGER NOT NULL DEFAULT 0;
+
+    CREATE TABLE inbox (
+        id          INTEGER PRIMARY KEY,
+        message_id  TEXT UNIQUE,
+        draft_id    INTEGER,                -- the sent mail this answers, if any
+        item_id     INTEGER,                -- the job/lead it's about, if any
+        kind        TEXT NOT NULL,          -- reply|applied|interview|rejected|bounce|update
+        from_addr   TEXT,
+        from_name   TEXT,
+        subject     TEXT,
+        snippet     TEXT,
+        received_at TEXT,
+        status      TEXT NOT NULL DEFAULT 'new',   -- new|done
+        created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX inbox_status ON inbox(status, kind);
+
+    CREATE TRIGGER recall_inbox AFTER INSERT ON inbox BEGIN
+        INSERT INTO recall (text, tags, kind, ref, day)
+        VALUES (coalesce(new.from_name, new.from_addr) || ': ' || coalesce(new.subject, '') || ' ' || coalesce(new.snippet, ''),
+                new.kind, 'mail_in', 'n:' || new.id, date(new.created_at, 'localtime'));
+    END;
+    """,
 ]
 
 

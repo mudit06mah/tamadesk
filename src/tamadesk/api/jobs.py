@@ -98,6 +98,25 @@ def memory_catch_up(limit: int = 5) -> int:
     return done
 
 
+def inbox_check() -> None:
+    """Every few minutes: new replies / portal mail for things the user started. Pings for the ones that matter."""
+    from tamadesk.life import inbox, mail
+
+    s = get_settings()
+    if not mail.ready(s):
+        return
+    conn = db.connect(s.db_path)
+    try:
+        for m in inbox.check(s, conn):
+            if m["kind"] in ("reply", "interview", "bounce"):
+                notify({"reply": "New reply", "interview": "Interview invite", "bounce": "Email bounced"}[m["kind"]],
+                       f"{m['from_name'] or m['from_addr']}: {m['subject']}")  # fmt: skip
+    except Exception:
+        log.exception("inbox check failed")
+    finally:
+        conn.close()
+
+
 def run_module(module_id: str) -> None:
     s = get_settings()
     m = spec.get(s, module_id)
@@ -139,6 +158,7 @@ def start(s: Settings) -> None:
     _sched.add_job(ring_due, "interval", seconds=20, id="ring", executor="ring", **ONCE)
     _sched.add_job(evening_recap, "cron", hour=s.day.recap_hour, minute=0, id="recap", **ONCE)
     _sched.add_job(memory_catch_up, "cron", hour=3, minute=30, id="memory", **ONCE)
+    _sched.add_job(inbox_check, "interval", minutes=10, id="inbox", **ONCE)
     _sched.add_job(memory_catch_up, id="memory-boot", next_run_time=datetime.now().astimezone() + timedelta(minutes=2),
                    **ONCE)  # fmt: skip
     _sched.start()

@@ -105,14 +105,16 @@ def summarize(conn: sqlite3.Connection, brain: Brain, item_id: int, about: str) 
     data = json.loads(it["data"] or "{}")
     if "summary" in data:
         return data["summary"]
-    text = it["body"]
-    if it["url"] and len(text) < 400:
+    text = it["body"] or ""
+    if it["url"] and (spoken := sources.transcript(it["url"])):  # a video: what's actually said in it
+        text = f"Description: {text}\n\nTranscript: {spoken}"
+    elif it["url"] and len(text) < 400:
         try:
             text = sources.read_page(it["url"])
         except Exception:  # noqa: BLE001 - fall back to what we have
             log.info("page read failed for %s", it["url"])
     out = brain.ask(
-        f"Summarize this for a busy person.\nAbout them: {about}\n\nTitle: {it['title']}\n\n{text[:6000]}",
+        f"Summarize this for a busy person.\nAbout them: {about}\n\nTitle: {it['title']}\n\n{text[:9000]}",
         SUMMARY_SCHEMA,
         light=True,
         kind="summary",

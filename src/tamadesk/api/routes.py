@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from tamadesk.brain import BrainError, get_brain
 from tamadesk.core import db
 from tamadesk.core.config import get_settings, save_settings
-from tamadesk.life import actions, capture, docs, game, github, writer
+from tamadesk.life import actions, capture, docs, game, github, pipeline, upnext, writer
 from tamadesk.life.onboarding import COMPANIONS, QUESTIONS
 
 router = APIRouter(prefix="/api")
@@ -164,6 +164,22 @@ def delete_doc(doc_id: int, conn: Conn) -> dict:
     return {"ok": True}
 
 
+@router.get("/next")
+def next_up(conn: Conn) -> list[dict]:
+    return upnext.up_next(conn)
+
+
+class StageIn(BaseModel):
+    stage: str
+
+
+@router.post("/items/{item_id}/stage")
+def item_stage(item_id: int, b: StageIn, conn: Conn) -> dict:
+    with db.transaction(conn):
+        changed = pipeline.set_stage(conn, item_id, b.stage, why="you said so", manual=True)
+    return {"changed": changed}
+
+
 @router.get("/notes")
 def notes(conn: Conn) -> list[dict]:
     return [
@@ -271,8 +287,29 @@ def delete_sample(sid: int, conn: Conn) -> dict:
 
 
 @router.get("/voice")
-def voice(conn: Conn) -> dict | None:
-    return db.get_profile(conn, "voice")
+def voice(conn: Conn) -> dict:
+    """The studied voice plus the user's own rules (from redraft feedback or added by hand)."""
+    return {"voice": db.get_profile(conn, "voice"), "rules": db.get_profile(conn, "writing_feedback", [])}
+
+
+class VoiceEdit(BaseModel):
+    summary: str | None = None
+    do: list[str] | None = None
+    dont: list[str] | None = None
+    phrases: list[str] | None = None
+    rules: list[str] | None = None
+
+
+@router.put("/voice")
+def edit_voice(v: VoiceEdit, conn: Conn) -> dict:
+    """Direct the voice: change the overview, drop points you disagree with, add your own rules."""
+    cur = db.get_profile(conn, "voice") or {"summary": "", "traits": [], "do": [], "dont": [], "phrases": []}
+    patch = {k: val for k, val in v.model_dump(exclude={"rules"}).items() if val is not None}
+    if patch:
+        db.set_profile(conn, "voice", cur | patch)
+    if v.rules is not None:
+        db.set_profile(conn, "writing_feedback", [r.strip() for r in v.rules if r.strip()][-25:])
+    return voice(conn)
 
 
 @router.post("/voice/build")
