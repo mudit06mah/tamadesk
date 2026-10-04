@@ -81,11 +81,13 @@ export function Today({
 
   const p = s.progress
   const done = s.today.done.length
-  // what got done today, newest last: log lines and finished todos together
+  // finished todos stay ticked in the list until the day closes (recap hour), then move into the log
+  const closed = new Date().getHours() >= s.day.recap_hour
   const story = [
     ...s.today.log.map((e) => ({ key: `l${e.id}`, at: e.created_at, text: e.body, todo: null as Todo | null })),
-    ...s.today.done.map((t) => ({ key: `t${t.id}`, at: t.done_at ?? t.created_at, text: t.title, todo: t })),
+    ...(closed ? s.today.done.map((t) => ({ key: `t${t.id}`, at: t.done_at ?? t.created_at, text: t.title, todo: t })) : []),
   ].sort((x, y) => x.at.localeCompare(y.at))
+  const ticked = closed ? [] : s.today.done
 
   return (
     <div className="today">
@@ -101,7 +103,7 @@ export function Today({
       <div className="day-grid">
         <div className="day-col">
           <Win title={`todo.lst${s.today.open.length ? ` (${s.today.open.length})` : ''}`} id="win-todos">
-            {s.today.open.length === 0 ? (
+            {s.today.open.length === 0 && ticked.length === 0 ? (
               <p className="muted mono">&gt; {done ? 'all clear. nice.' : 'no todos. type "todo …" above'}_</p>
             ) : (
               <ul className="todo">
@@ -116,8 +118,21 @@ export function Today({
                       </button>
                     </motion.li>
                   ))}
+                  {ticked.map((t) => (
+                    <motion.li key={t.id} layout className="done" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}>
+                      <button className="check-box" aria-label={`Not done: ${t.title}`} onClick={(e) => doTodo(t, 'undo', e.currentTarget)}>
+                        ✓
+                      </button>
+                      <span className="todo-text">{t.title}</span>
+                    </motion.li>
+                  ))}
                 </AnimatePresence>
               </ul>
+            )}
+            {ticked.length > 0 && (
+              <p className="muted small todo-note">
+                ticked ones move to today.log at {String(s.day.recap_hour).padStart(2, '0')}:00
+              </p>
             )}
           </Win>
           <Win title="recap.txt">

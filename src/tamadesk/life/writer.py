@@ -35,9 +35,27 @@ RECAP_SCHEMA = {
 }
 
 
+# emoji -> the closest emoticon (tamadesk speaks in :) not 😊); anything else pictographic is dropped
+EMOTICONS = {
+    "😊": ":)", "🙂": ":)", "😀": ":D", "😃": ":D", "😄": ":D", "😁": ":D", "😆": "XD", "😂": "XD", "🤣": "XD",
+    "😉": ";)", "😜": ";P", "😛": ":P", "😢": ":(", "😞": ":(", "🙁": ":(", "😭": "T_T", "😮": ":O", "😲": ":O",
+    "😅": "^^;", "😍": "<3", "❤️": "<3", "❤": "<3", "💖": "<3", "😎": "B)", "🤔": "hmm", "👍": "+1", "🎉": "\\o/",
+    "🥳": "\\o/", "😴": "-_-zzz", "🙏": "thanks", "😬": ":S", "😐": ":|", "😑": "-_-",
+}  # fmt: skip
+EMOJI = re.compile(
+    "[\U0001f000-\U0001faff\u2600-\u27bf\u2b00-\u2bff\U0001f1e6-\U0001f1ff\ufe0f\u200d\u20e3]+"
+)
+
+
+def no_emoji(text: str) -> str:
+    for e, face in EMOTICONS.items():
+        text = text.replace(e, face)
+    return re.sub(r"[ \t]{2,}", " ", EMOJI.sub("", text))
+
+
 def clean(text: str) -> str:
-    """Deterministic last pass: models love em dashes even when told not to."""
-    return re.sub(r"\s*[\u2014\u2013]\s*", ", ", text)
+    """Deterministic last pass on anything written for the user: no em dashes, no emoji."""
+    return no_emoji(re.sub(r"\s*[\u2014\u2013]\s*", ", ", text))
 
 
 def _about(conn: sqlite3.Connection) -> str:

@@ -18,7 +18,7 @@ type FxApi = {
   float: (el: Element | null, text: string) => void
   fly: (from: Element | null, toId: string) => Promise<void>
   banner: (b: Banner) => void
-  sound: (s: Sound) => void
+  sound: (s: Sound, n?: number) => void
 }
 
 const Ctx = createContext<FxApi | null>(null)

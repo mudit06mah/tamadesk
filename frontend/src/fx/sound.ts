@@ -80,16 +80,39 @@ const SOUNDS = {
   start: () =>
     [523, 523, 784, 659, 784, 1047].forEach((f, i) => tone(f, [0, 0.12, 0.24, 0.42, 0.54, 0.7][i], 0.3, 'square', 0.018)),
   levelup: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.12 * i, 0.3, 'triangle', 0.03)),
+  // switching pages: a soft airy swoop downward
+  whoosh: () => bubble(900, 380, 0.14, 0.022),
+  // keep an item: a little "aww" upward pair; skip: a quick soft swipe down
+  keep: () => [740, 988].forEach((f, i) => tone(f, 0.06 * i, 0.18, 'sine', 0.035)),
+  skip: () => bubble(480, 260, 0.1, 0.028),
+  // each step the companion takes while working climbs a little higher (n = step number)
+  step: (n = 0) => bubble(520 + Math.min(n, 10) * 45, 760 + Math.min(n, 10) * 60, 0.07, 0.022),
+  // the answer arrived: a warm three-note chord, rolled
+  arrive: () => [523, 659, 988].forEach((f, i) => tone(f, 0.05 * i, 0.5, 'sine', 0.028)),
+  // a new theme: a quick shimmer
+  sparkle: () => [1319, 1568, 1760, 2093].forEach((f, i) => tone(f, 0.045 * i, 0.16, 'sine', 0.016)),
+  // dialogs open with a rising bubble and close with a falling one
+  open: () => bubble(380, 640, 0.1, 0.035),
+  close: () => bubble(640, 360, 0.09, 0.03),
+  // typing in the Ask box: barely-there clicks
+  key: () => bubble(1800 + Math.random() * 500, 2300, 0.02, 0.006),
 } as const
 
 export type Sound = keyof typeof SOUNDS
 
-export function play(s: Sound) {
+let lastKey = 0
+
+export function play(s: Sound, n?: number) {
   if (!enabled) return
+  if (s === 'key') {
+    const now = performance.now()
+    if (now - lastKey < 45) return // typing fast shouldn't become a buzz
+    lastKey = now
+  }
   try {
     ctx ??= new AudioContext()
     if (ctx.state === 'suspended') void ctx.resume()
-    SOUNDS[s]()
+    ;(SOUNDS[s] as (n?: number) => void)(n)
   } catch {
     /* audio unavailable */
   }

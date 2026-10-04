@@ -2,7 +2,8 @@
 // Every tab is the same ranked list: keep, skip, summarize, email, or turn into a todo.
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useState } from 'react'
-import { api, when, type Mod, type ModItem } from './api'
+import { api, askBolt, when, type Mod, type ModItem } from './api'
+import { useCompanion } from './Companion'
 import { useFx } from './fx/Fx'
 import { ItemCard, useItemActions } from './ItemCard'
 import { Dialog, Win } from './ui'
@@ -12,6 +13,7 @@ type Props = { mod: Mod; notify: (t: string, k?: Toast['kind']) => void; onChang
 
 export function ModulePage({ mod, notify, onChange, onDeleted }: Props) {
   const fx = useFx()
+  const buddy = useCompanion()
   const [tab, setTab] = useState<'new' | 'saved'>('new')
   const [items, setItems] = useState<ModItem[] | null>(null)
   const [more, setMore] = useState(false)
@@ -86,7 +88,33 @@ export function ModulePage({ mod, notify, onChange, onDeleted }: Props) {
           </button>
         </div>
       </header>
-      {mod.run?.last_error && <p className="bad-text small">Some sources failed: {mod.run.last_error}</p>}
+      <AnimatePresence>
+        {mod.run?.last_error && (
+          <motion.div className="source-trouble" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+            <span title={mod.run.last_error}>
+              {mod.run.last_error.split('; ').length} source{mod.run.last_error.includes('; ') ? 's' : ''} had trouble this time:{' '}
+              <span className="muted">{mod.run.last_error.split('; ').map((e) => e.split(':')[0]).join(', ')}</span>
+            </span>
+            <button
+              className="btn tiny"
+              onClick={() => askBolt(`My "${mod.name}" tab has a source that keeps failing (${mod.run?.last_error}). Replace it with a working one.`, true)}
+            >
+              Ask {buddy.name} to fix it
+            </button>
+            <button
+              className="icon-x"
+              title="Hide this until something else breaks"
+              onClick={async () => {
+                await api.dismissError(mod.id)
+                fx.sound('close')
+                onChange()
+              }}
+            >
+              ×
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {!items ? (
         <p className="loading">opening {mod.name.toLowerCase()}…</p>

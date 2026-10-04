@@ -125,6 +125,7 @@ export const api = {
   saveModuleYaml: (id: string, yaml: string) => call<Mod>(`/modules/${id}`, { method: 'PUT', body: JSON.stringify({ yaml }) }),
   deleteModule: (id: string) => call(`/modules/${id}`, { method: 'DELETE' }),
   runModule: (id: string) => post(`/modules/${id}/run`),
+  dismissError: (id: string) => post(`/modules/${id}/dismiss`),
   items: (id: string, status: string, offset = 0) => call<{ items: ModItem[]; has_more: boolean }>(`/modules/${id}/items?status=${status}&offset=${offset}`),
   act: (itemId: number, action: 'save' | 'skip' | 'done' | 'undo', reason = '') => post<{ status: string; xp: number }>(`/items/${itemId}/${action}`, { reason }),
   itemTodo: (itemId: number) => post<{ todo_id: number }>(`/items/${itemId}/todo`),

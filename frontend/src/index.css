@@ -2527,3 +2527,95 @@ a.item-title:hover {
 .gh-rows li.stale .gh-title {
   color: var(--muted);
 }
+
+.source-trouble {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 2px dashed var(--line);
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--butter) 25%, var(--win));
+  overflow: hidden;
+}
+
+.source-trouble > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.source-trouble .icon-x {
+  opacity: 1;
+}
+
+.todo-note {
+  margin: 8px 0 0;
+}
+
+/* ================================================================= motion polish */
+html.theming *,
+html.theming *::before,
+html.theming *::after {
+  transition: background-color 0.45s ease, border-color 0.45s ease, color 0.3s ease, box-shadow 0.45s ease !important;
+}
+
+/* ticking a todo draws a line through it */
+.todo li.done .todo-text {
+  text-decoration: none;
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 58% / 100% 1.5px;
+  animation: strike 0.35s ease-out;
+}
+
+@keyframes strike {
+  from {
+    background-size: 0 1.5px;
+  }
+}
+
+button.check-box:active {
+  transform: scale(0.8);
+}
+
+.nav-row:hover .nav-icon {
+  animation: wiggle 0.45s ease;
+}
+
+@keyframes wiggle {
+  25% {
+    transform: rotate(-12deg);
+  }
+  60% {
+    transform: rotate(9deg);
+  }
+}
+
+.chip {
+  transition: transform 0.12s, background 0.15s;
+}
+
+.chip:active {
+  transform: scale(0.94);
+}
+
+.msg {
+  animation: msg-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.ask-box textarea {
+  caret-color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theming * {
+    transition: none !important;
+  }
+}

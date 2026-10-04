@@ -90,6 +90,11 @@ export function AskPanel({
     <section className="ask">
       <div className="ask-head">
         <div className="ask-buddy">
+          <motion.div
+            animate={running ? { y: [0, -3, 0] } : text ? { rotate: -7, y: -2 } : { rotate: 0, y: 0 }}
+            transition={running ? { duration: 0.7, repeat: Infinity } : { type: 'spring', stiffness: 260, damping: 14 }}
+            title={text && !running ? 'listening…' : undefined}
+          >
           <Companion
             mood={running ? 'happy' : poke ? 'happy' : mood}
             size={104}
@@ -100,6 +105,7 @@ export function AskPanel({
               setTimeout(() => setPoke(null), 1800)
             }}
           />
+          </motion.div>
           <div className="lv-mini" title={`${level.xp} XP · ${level.need - level.into} to next level`}>
             <b>LV {level.level}</b>
             <Bar value={level.into / Math.max(1, level.need)} label="XP to next level" />
@@ -131,7 +137,10 @@ export function AskPanel({
               rows={2}
               value={text}
               disabled={running}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value)
+                fx.sound('key')
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()

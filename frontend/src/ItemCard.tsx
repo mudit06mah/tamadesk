@@ -29,7 +29,7 @@ export function useItemActions(notify: (t: string, k?: Toast['kind']) => void, o
         fx.sound('tap')
       } else {
         const r = await api.act(it.id, a, reason)
-        fx.sound(a === 'skip' ? 'undo' : 'check')
+        fx.sound(a === 'skip' ? 'skip' : a === 'save' ? 'keep' : 'check')
         if (a === 'save') fx.burstAt(el)
         if (r.xp) fx.float(el, `+${r.xp} XP`)
         onGone(it, r.status)

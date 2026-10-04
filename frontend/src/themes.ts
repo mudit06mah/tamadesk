@@ -53,9 +53,15 @@ const VARS: [keyof Palette, string][] = [
   ['invBg', 'inverse-bg'], ['invFg', 'inverse-fg'], ['good', 'good'], ['bad', 'bad'], ['field', 'field'],
 ]
 
+let fade: number | undefined
+
 export function applyTheme(id: string) {
   const t = THEMES[id] ?? THEMES.paper
   const root = document.documentElement
+  // colours glide to the new theme instead of snapping (only while switching, so hovers stay instant)
+  root.classList.add('theming')
+  window.clearTimeout(fade)
+  fade = window.setTimeout(() => root.classList.remove('theming'), 600)
   for (const [k, v] of VARS) root.style.setProperty(`--${v}`, t[k] as string)
   root.style.setProperty('--r', t.r ?? '12px')
   root.style.colorScheme = t.dark ? 'dark' : 'light'

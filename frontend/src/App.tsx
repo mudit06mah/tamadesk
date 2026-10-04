@@ -147,7 +147,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   }, [])
 
   const go = useCallback((p: Page) => {
-    play('tap')
+    play('whoosh')
     setPage(p)
   }, [])
 
@@ -207,7 +207,11 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
         {page === t.id && <motion.span layoutId="nav-on" className="nav-glow" transition={{ type: 'spring', stiffness: 500, damping: 34 }} />}
         <span className="nav-icon">{t.icon}</span>
         <span className="nav-label">{t.label}</span>
-        {!!t.count && <span className="nav-count">{t.count}</span>}
+        {!!t.count && (
+          <motion.span key={t.count} className="nav-count" initial={{ scale: 1.6 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 600, damping: 14 }}>
+            {t.count}
+          </motion.span>
+        )}
         {key > 0 && key < 10 && <kbd className="nav-key">{key}</kbd>}
       </motion.button>
     )
@@ -274,7 +278,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
                 <ThemePicker
                   value={theme}
                   onPick={(t) => {
-                    play('tap')
+                    play('sparkle')
                     setTheme(t)
                   }}
                 />
@@ -286,7 +290,13 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
 
       <main className="screen">
         <AnimatePresence mode="wait">
-          <motion.div key={page} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
+          <motion.div
+            key={page}
+            initial={{ opacity: 0, x: 18, scale: 0.995 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 34, opacity: { duration: 0.15 } }}
+          >
             {(page === 'today' || (page.startsWith('m:') && !mod)) && <Today state={state} refresh={refresh} notify={notify} />}
             {mod && <ModulePage key={mod.id} mod={mod} notify={notify} onChange={refresh} onDeleted={() => (go('today'), void refresh())} />}
             {page === 'memory' && <Memory notify={notify} />}

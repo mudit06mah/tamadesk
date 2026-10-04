@@ -81,7 +81,13 @@ export function Settings({
       </Win>
 
       <Win title="theme.cfg">
-        <ThemePicker value={theme} onPick={setTheme} />
+        <ThemePicker
+          value={theme}
+          onPick={(t) => {
+            fx.sound('sparkle')
+            setTheme(t)
+          }}
+        />
       </Win>
 
       <Win title="assistant.sys">

@@ -88,7 +88,34 @@ def list_tabs(s: Settings, conn: sqlite3.Connection) -> list[dict]:
       ["name", "sources"])  # fmt: skip
 def create_tab(s: Settings, conn: sqlite3.Connection, **kw) -> dict | str:
     m = spec.Module(**{"id": spec.slug(kw["name"])} | kw)  # validated here, so errors come back to the model
-    # try every source once before saving, so a dead feed (401s, empty queries) is fixed now, not found later
+    if problems := _broken(m):
+        return "not created, these sources don't work, replace them and try again:\n" + "\n".join(problems)
+    # the desk's own API installs it, so the running scheduler picks it up and fills it now
+    return get_json(f"{_api(s)}/modules/spec", body=m.model_dump(), timeout=15)
+
+
+@tool("update_tab", "Change an existing tab (by id or name): e.g. replace a broken source, change the schedule, "
+      "interests or notify. Pass only the fields to change; 'sources' replaces the whole list.",
+      {"tab": S, "name": S, "icon": S, "every": S, "sources": {"type": "array", "items": {"type": "object"}},
+       "interests": {"type": "array", "items": S}, "actions": {"type": "array", "items": S},
+       "notify": {"type": "boolean"}}, ["tab"])  # fmt: skip
+def update_tab(s: Settings, conn: sqlite3.Connection, tab: str, **changes) -> dict | str:
+    old = _tab(s, tab)
+    if old is None:
+        return f"no tab {tab!r}"
+    m = spec.Module(**old.model_dump() | changes)
+    if "sources" in changes and (problems := _broken(m)):
+        return "not changed, these sources don't work, pick others:\n" + "\n".join(problems)
+    fetch(f"{_api(s)}/modules/{m.id}/spec", body=m.model_dump(), method="PUT", timeout=15)
+    return f"updated {m.name}; it's refreshing now"
+
+
+def _api(s: Settings) -> str:
+    return f"http://{s.server.host}:{s.server.port}/api"
+
+
+def _broken(m: spec.Module) -> list[str]:
+    """Try every source once, so a dead feed (401s, empty queries) is fixed now, not found later."""
     problems = []
     for src in m.sources:
         if src.type == "agent":
@@ -98,12 +125,7 @@ def create_tab(s: Settings, conn: sqlite3.Connection, **kw) -> dict | str:
                 problems.append(f"{src.model_dump()} returned nothing")
         except Exception as e:  # noqa: BLE001 - reported back so the model can pick another source
             problems.append(f"{src.model_dump()} failed: {str(e)[:160]}")
-    if problems:
-        return "not created, these sources don't work, replace them and try again:\n" + "\n".join(problems)
-    # the desk's own API installs it, so the running scheduler picks it up and fills it now
-    return get_json(
-        f"http://{s.server.host}:{s.server.port}/api/modules/spec", body=m.model_dump(), timeout=15
-    )
+    return problems
 
 
 @tool(
@@ -112,7 +134,7 @@ def create_tab(s: Settings, conn: sqlite3.Connection, **kw) -> dict | str:
 def delete_tab(s: Settings, conn: sqlite3.Connection, tab: str) -> str:
     if spec.get(s, tab) is None:
         return f"no tab {tab!r}"
-    fetch(f"http://{s.server.host}:{s.server.port}/api/modules/{tab}", method="DELETE", timeout=15)
+    fetch(f"{_api(s)}/modules/{tab}", method="DELETE", timeout=15)
     return f"deleted {tab}"
 
 

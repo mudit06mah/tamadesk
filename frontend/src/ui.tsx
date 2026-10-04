@@ -2,6 +2,7 @@
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { play } from './fx/sound'
 
 export function Win({
   title,
@@ -125,6 +126,7 @@ export function Dialog({
 
   useEffect(() => {
     if (!open) return
+    play('open')
     const prev = document.activeElement as HTMLElement | null
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -146,6 +148,7 @@ export function Dialog({
     return () => {
       window.removeEventListener('keydown', onKey, true)
       clearTimeout(t)
+      play('close')
       prev?.focus?.()
     }
   }, [open])

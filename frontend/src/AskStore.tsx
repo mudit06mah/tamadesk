@@ -77,7 +77,7 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
       setText('')
       if (FREE.test(t)) {
         // instant and free: handled by the desk, no AI involved
-        const r = await api.capture(t.replace(/^\s*(log\b|>)\s*/i, ''))
+        const r = await api.capture(t.replace(/^\s*(log\b\s*:?|>)\s*/i, ''))
         fx.sound('capture')
         fx.float(document.querySelector('.ask-box'), r.kind === 'log' ? `+${r.xp} XP` : r.kind === 'todo' ? '+ todo' : 'reminder set')
         if (r.no_time) notify("Couldn't find a time in that, so it's a todo. Try “in 10 minutes” or “at 6pm”.", 'err')
@@ -106,8 +106,8 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
             setLive({ text: liveText, steps: [...steps] })
           }
           if (e.type === 'tool') {
-            fx.sound('poke')
             steps.push({ name: e.name, input: e.input })
+            fx.sound('step', steps.length)
             setLive({ text: liveText, steps: [...steps] })
           }
           if (e.type === 'done') final = { role: 'assistant', text: e.text, cost_usd: e.cost_usd, tokens: e.tokens }
@@ -120,7 +120,7 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
       setMsgs((m) => [...m, { ...final, steps, text: final.text || liveText }])
       setLive(null)
       busy.current = false
-      fx.sound('send')
+      fx.sound('arrive')
       setDoneTick((n) => n + 1)
       loadMeta()
       onChange()

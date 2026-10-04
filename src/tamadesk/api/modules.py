@@ -45,8 +45,24 @@ def list_modules(conn: Conn) -> list[dict]:
     counts = {(r["module"], r["status"]): r["n"] for r in conn.execute(
         "SELECT module, status, count(*) AS n FROM items GROUP BY module, status")}  # fmt: skip
     runs = {r["module"]: dict(r) for r in conn.execute("SELECT * FROM module_runs")}
+    hidden = db.get_profile(conn, "dismissed_errors", {})
+    for r in runs.values():  # an error the user dismissed stays hidden until it changes
+        if r["last_error"] and hidden.get(r["module"]) == r["last_error"]:
+            r["last_error"] = None
     return [m.model_dump() | {"new": counts.get((m.id, "new"), 0), "saved": counts.get((m.id, "saved"), 0),
                               "run": runs.get(m.id)} for m in spec.load_all(get_settings())]  # fmt: skip
+
+
+@router.post("/modules/{module_id}/dismiss")
+def dismiss_error(module_id: str, conn: Conn) -> dict:
+    row = conn.execute("SELECT last_error FROM module_runs WHERE module = ?", (module_id,)).fetchone()
+    if row and row["last_error"]:
+        db.set_profile(
+            conn,
+            "dismissed_errors",
+            db.get_profile(conn, "dismissed_errors", {}) | {module_id: row["last_error"]},
+        )
+    return {"ok": True}
 
 
 @router.get("/templates")
@@ -97,10 +113,27 @@ def edit_module(module_id: str, body: YamlIn, conn: Conn) -> dict:
         m = spec.Module(**(yaml.safe_load(body.yaml) or {}) | {"id": module_id})
     except (yaml.YAMLError, ValidationError, TypeError) as e:
         raise HTTPException(422, str(e)) from e
+    return _replace(conn, m)
+
+
+@router.put("/modules/{module_id}/spec")
+def replace_spec(module_id: str, body: dict, conn: Conn) -> dict:
+    """A full module spec for an existing tab (the assistant's update_tab tool puts here)."""
+    _module_or_404(module_id)
+    try:
+        return _replace(conn, spec.Module(**body | {"id": module_id}))
+    except ValidationError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+def _replace(conn, m: spec.Module) -> dict:
+    """Save a changed tab: old errors are cleared, it's re-ranked, rescheduled and refreshed now."""
     s = get_settings()
     spec.save(s, m)
+    conn.execute("UPDATE module_runs SET last_error = NULL WHERE module = ?", (m.id,))
     engine.rescore(conn, m)
     jobs.sync_modules(s)
+    jobs.run_now(m.id)
     return m.model_dump()
 
 
@@ -133,17 +166,6 @@ def items(module_id: str, conn: Conn, status: str = "new", offset: int = 0, limi
         (module_id, status, limit + 1, offset),
     ).fetchall()
     return {"items": [_item_view(r) for r in rows[:limit]], "has_more": len(rows) > limit}
-
-
-@router.get("/picks")
-def picks(conn: Conn, limit: int = 4) -> list[dict]:
-    """The best unseen items across all tabs, for Today. Only ones the ranker actually likes."""
-    names = {m.id: m.name for m in spec.load_all(get_settings())}
-    rows = conn.execute(
-        "SELECT * FROM items WHERE status = 'new' AND score > 0.5 ORDER BY score DESC, id DESC LIMIT ?",
-        (limit * 3,),
-    ).fetchall()
-    return [_item_view(r) | {"module_name": names[r["module"]]} for r in rows if r["module"] in names][:limit]
 
 
 class ActIn(BaseModel):
