@@ -144,6 +144,7 @@ export const api = {
     call(`/mail/${id}`, { method: 'PATCH', body: JSON.stringify(d) }),
   sendMail: (id: number, verified: boolean) => post<{ dry_run: boolean; to: string }>(`/mail/${id}/send`, { verified }),
   dropMail: (id: number) => post(`/mail/${id}/drop`),
+  redraftMail: (id: number, note: string) => post<{ subject: string; body: string }>(`/mail/${id}/redraft`, { note }),
   mailSetup: (b: { address: string; from_name: string; app_password: string; dry_run: boolean; daily_cap: number }) =>
     call<{ ok: boolean; ready: boolean }>('/mail/setup', { method: 'PUT', body: JSON.stringify(b) }),
   chats: () => call<{ id: number; title: string; updated_at: string }[]>('/chats'),

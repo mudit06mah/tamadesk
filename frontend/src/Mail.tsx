@@ -1,11 +1,13 @@
 // Mail: drafts your companion wrote (or you started), ready to check and send through your Gmail.
-// Pairs with lead tabs: a lead's ✉ button asks the companion to research it and write here.
+// Pairs with lead tabs: a lead's "email them" button asks the companion to research it and write here.
+// Not right? "Redraft" takes your note; notes are remembered as writing rules for every future draft.
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useState } from 'react'
 import { api, askBolt, when, type MailBox, type MailDraft, type Sample, type Voice } from './api'
 import { useCompanion } from './Companion'
 import { useFx } from './fx/Fx'
 import { DocsPanel } from './Docs'
+import { SendIcon } from './icons'
 import { Dialog, Win } from './ui'
 import type { Toast } from './util'
 
@@ -60,7 +62,7 @@ export function Mail({ notify, onChange }: Props) {
         ) : box.items.length === 0 ? (
           <Win title="mail.empty" className="empty-win">
             <p className="muted">
-              {tab === 'draft' ? `No drafts. Ask ${buddy.name} to write one, or press ✉ on a lead.` : 'Nothing sent yet.'}
+              {tab === 'draft' ? `No drafts. Ask ${buddy.name} to write one, or press “email them” on a lead.` : 'Nothing sent yet.'}
             </p>
           </Win>
         ) : (
@@ -119,6 +121,8 @@ function DraftCard({ d, ready, notify, onGone, onSetup }: { d: MailDraft; ready:
   const fx = useFx()
   const [f, setF] = useState({ subject: d.subject, body: d.body, to_name: d.to_name ?? '', to_email: d.to_email ?? '' })
   const [checked, setChecked] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  const [rewriting, setRewriting] = useState(false)
   const unsure = !d.email_sure && f.to_email === (d.to_email ?? '')
   const save = () => api.editMail(d.id, f).catch((e: Error) => notify(e.message, 'err'))
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value })
@@ -137,8 +141,25 @@ function DraftCard({ d, ready, notify, onGone, onSetup }: { d: MailDraft; ready:
     }
   }
 
+  const redraft = async () => {
+    if (!note?.trim()) return
+    setRewriting(true)
+    try {
+      await save()
+      const r = await api.redraftMail(d.id, note)
+      setF((x) => ({ ...x, subject: r.subject, body: r.body }))
+      setNote(null)
+      fx.sound('check')
+      notify('Rewritten. That note is now a writing rule for every draft.')
+    } catch (e) {
+      notify((e as Error).message, 'err')
+    } finally {
+      setRewriting(false)
+    }
+  }
+
   return (
-    <div className="item draft-card">
+    <div className={`item draft-card ${rewriting ? 'rewriting' : ''}`}>
       <div className="draft-to">
         <span className="to-label">TO</span>
         <input value={f.to_name} onChange={set('to_name')} onBlur={save} placeholder="name" />
@@ -165,13 +186,48 @@ function DraftCard({ d, ready, notify, onGone, onSetup }: { d: MailDraft; ready:
       <input className="draft-subject" value={f.subject} onChange={set('subject')} onBlur={save} placeholder="subject" />
       <textarea className="draft-body" value={f.body} onChange={set('body')} onBlur={save} rows={8} />
       {d.error && <p className="bad-text small">{d.error}</p>}
+      <AnimatePresence>
+        {note !== null && (
+          <motion.form
+            className="redraft"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            onSubmit={(e) => {
+              e.preventDefault()
+              void redraft()
+            }}
+          >
+            <input
+              autoFocus
+              value={note}
+              disabled={rewriting}
+              onChange={(e) => setNote(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && setNote(null)}
+              placeholder="what should change? e.g. shorter, less formal, mention my resume, drop the second paragraph"
+            />
+            <button className="btn tiny solid" disabled={rewriting || !note.trim()}>
+              {rewriting ? <span className="blink">rewriting…</span> : 'Redraft'}
+            </button>
+          </motion.form>
+        )}
+      </AnimatePresence>
       <div className="item-acts">
         <motion.button className="btn tiny ghost" whileTap={{ scale: 0.9 }} onClick={async () => (await api.dropMail(d.id), fx.sound('drop'), onGone())}>
           toss
         </motion.button>
+        <motion.button className="btn tiny" whileTap={{ scale: 0.9 }} disabled={rewriting} onClick={() => setNote(note === null ? '' : null)}>
+          ✎ redraft
+        </motion.button>
         <span className="grow" />
-        <motion.button className="btn solid" whileTap={{ scale: 0.9, rotate: -3 }} disabled={unsure && !checked} onClick={(e) => send(e.currentTarget)}>
-          {ready ? 'Send ✉' : 'Connect Gmail to send'}
+        <motion.button className="btn solid send-btn" whileTap={{ scale: 0.9, rotate: -3 }} disabled={(unsure && !checked) || rewriting} onClick={(e) => send(e.currentTarget)}>
+          {ready ? (
+            <>
+              Send <SendIcon />
+            </>
+          ) : (
+            'Connect Gmail to send'
+          )}
         </motion.button>
       </div>
     </div>

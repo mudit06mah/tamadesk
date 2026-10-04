@@ -159,6 +159,7 @@ kbd {
 
 .dock {
   position: sticky;
+  z-index: 40; /* sticky makes its own stacking layer: keep it (and the theme popover) above the page */
   top: 28px;
   height: calc(100vh - 56px);
   display: flex;
@@ -2397,4 +2398,31 @@ a.item-title:hover {
   .nav-tabs {
     max-height: 200px;
   }
+}
+
+.send-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.send-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.redraft {
+  display: flex;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.redraft input {
+  flex: 1;
+}
+
+.draft-card.rewriting textarea,
+.draft-card.rewriting .draft-subject {
+  opacity: 0.45;
+  transition: opacity 0.2s;
 }

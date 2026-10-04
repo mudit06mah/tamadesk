@@ -37,7 +37,7 @@ export function stepLabel(st: Step): string {
   return (labels[name] ?? name).slice(0, 90)
 }
 
-const GLYPH: Record<string, string> = { search: '⌕', web_search_exa: '⌕', create_tab: '✦', draft_email: '✉', add_todo: '✓', set_reminder: '⏰' }
+const GLYPH: Record<string, string> = { search: '⌕', web_search_exa: '⌕', create_tab: '✦', draft_email: '@', add_todo: '✓', set_reminder: '!' }
 const glyph = (st: Step) => GLYPH[st.name.replace(/^mcp__\w+?__/, '')] ?? '›'
 
 function examples(interests: string): string[] {
@@ -104,7 +104,7 @@ export function AskPanel({
         // instant and free: handled by the desk, no AI involved
         const r = await api.capture(t.replace(/^\s*(log\b|>)\s*/i, ''))
         fx.sound('capture')
-        fx.float(inputRef.current, r.kind === 'log' ? `+${r.xp} XP` : r.kind === 'todo' ? '+ todo' : '⏰ set')
+        fx.float(inputRef.current, r.kind === 'log' ? `+${r.xp} XP` : r.kind === 'todo' ? '+ todo' : 'reminder set')
         onChange()
         return
       }

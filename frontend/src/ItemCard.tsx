@@ -43,7 +43,7 @@ export function useItemActions(notify: (t: string, k?: Toast['kind']) => void, o
   return { run, busy, summaries }
 }
 
-const LABEL: Record<Act, string> = { save: '♥ keep', skip: '✕ skip', done: '✓ done', todo: '+ todo', summarize: '✦ tl;dr', draft: '✉ email them' }
+const LABEL: Record<Act, string> = { save: '♥ keep', skip: '✕ skip', done: '✓ done', todo: '+ todo', summarize: '✦ tl;dr', draft: '@ email them' }
 
 export function ItemCard({
   it,

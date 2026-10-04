@@ -5,12 +5,15 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from tamadesk.api.routes import Conn
+from tamadesk.assistant import runner
+from tamadesk.core import db
 from tamadesk.core.config import get_settings, save_settings
 from tamadesk.life import mail
 from tamadesk.life.actions import add_draft
+from tamadesk.life.writer import clean
 
 router = APIRouter(prefix="/api/mail")
 
@@ -71,6 +74,39 @@ def send(draft_id: int, b: SendIn, conn: Conn) -> dict:
 def drop(draft_id: int, conn: Conn) -> dict:
     conn.execute("UPDATE drafts SET status = 'dropped' WHERE id = ? AND status = 'draft'", (draft_id,))
     return {"ok": True}
+
+
+class RedraftIn(BaseModel):
+    note: str = Field(min_length=2, max_length=1000)
+
+
+REDRAFT_SCHEMA = {"type": "object", "required": ["subject", "body"],
+                  "properties": {"subject": {"type": "string"}, "body": {"type": "string"}}}  # fmt: skip
+
+
+@router.post("/{draft_id}/redraft")
+def redraft(draft_id: int, b: RedraftIn, conn: Conn) -> dict:
+    """Rewrite one draft from the user's note. The note is also kept as a standing writing rule."""
+    d = conn.execute("SELECT * FROM drafts WHERE id = ? AND status = 'draft'", (draft_id,)).fetchone()
+    if d is None:
+        raise HTTPException(404, "no such draft")
+    s = get_settings()
+    rules = (db.get_profile(conn, "writing_feedback", []) + [b.note.strip()])[-15:]
+    db.set_profile(conn, "writing_feedback", rules)
+    prompt = (f"Rewrite this email draft following the user's feedback. Keep what they didn't ask to change. "
+              f"Use read_doc if it needs facts from their documents.\nFeedback: {b.note}\n\n"
+              f"To: {d['to_name'] or ''} <{d['to_email'] or ''}>\nSubject: {d['subject']}\n\n{d['body']}")  # fmt: skip
+    try:
+        out = runner.structured(
+            s, conn, prompt, REDRAFT_SCHEMA, kind="redraft", budget=s.assistant.max_usd_per_ask
+        )
+    except runner.BudgetError as e:
+        raise HTTPException(429, str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(502, f"redraft failed: {e}") from e
+    subject, body = clean(out["subject"]), clean(out["body"])
+    conn.execute("UPDATE drafts SET subject = ?, body = ? WHERE id = ?", (subject, body, draft_id))
+    return {"subject": subject, "body": body}
 
 
 class Setup(BaseModel):

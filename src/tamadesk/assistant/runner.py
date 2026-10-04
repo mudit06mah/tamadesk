@@ -49,6 +49,7 @@ def system_prompt(s: Settings, conn: sqlite3.Connection) -> str:
     voice = db.get_profile(conn, "voice")
     me = about.get("name") or "the user"
     lines = "\n".join(f"- {k}: {v}" for k, v in about.items() if v)
+    rules = db.get_profile(conn, "writing_feedback", [])
     files = "\n".join(
         f"- {d['name']} ({d['kind']}, {d['chars'] // 1000 + 1}k chars)" for d in docs.listing(conn)
     )
@@ -57,6 +58,7 @@ def system_prompt(s: Settings, conn: sqlite3.Connection) -> str:
 About {me}:
 {lines or "- (nothing yet)"}
 {f"Their documents (read with read_doc only when a task needs them, e.g. the resume for a job email, the product brief for outreach):{chr(10)}{files}" if files else ""}
+{"Their feedback on past drafts (follow it in everything you write for them):" + chr(10) + chr(10).join(f"- {r}" for r in rules) if rules else ""}
 {f"Their writing voice: {voice['summary']} Do: {'; '.join(voice['do'])}. Don't: {'; '.join(voice['dont'])}." if voice else ""}
 
 How you work:

@@ -74,3 +74,21 @@ def test_typing_your_own_address_counts_as_checked(setup):
         f"/api/mail/{rid}", json={"subject": "Hi", "body": "b", "to_name": "", "to_email": "real@x.dev"}
     )
     assert setup.post(f"/api/mail/{rid}/send", json={}).status_code == 200
+
+
+def test_redraft_rewrites_in_place_and_remembers_the_note(setup, monkeypatch):
+    from tamadesk.assistant import runner
+
+    seen = {}
+
+    def fake(s, conn, prompt, schema, *, kind, budget):
+        seen["prompt"] = prompt
+        return {"subject": "Hi again", "body": "Shorter — better."}
+
+    monkeypatch.setattr(runner, "structured", fake)
+    rid = _draft()
+    r = setup.post(f"/api/mail/{rid}/redraft", json={"note": "make it shorter"}).json()
+    assert r == {"subject": "Hi again", "body": "Shorter, better."}
+    assert "make it shorter" in seen["prompt"] and "Hello there" in seen["prompt"]
+    conn = db.connect(get_settings().db_path)
+    assert "- make it shorter" in runner.system_prompt(get_settings(), conn)  # a standing rule from now on

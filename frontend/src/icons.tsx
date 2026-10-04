@@ -11,7 +11,10 @@ export const PenIcon = () => (
   <svg {...base} aria-hidden><path d="M4 20l4-1 11-11-3-3L5 16z" /><path d="M14 6l3 3" /></svg>
 )
 export const GearIcon = () => (
-  <svg {...base} aria-hidden><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2" /></svg>
+  <svg {...base} aria-hidden><path d="M10.3 3h3.4l.5 2.4a7 7 0 011.7 1l2.3-.8 1.7 3-1.8 1.6a7 7 0 010 2l1.8 1.6-1.7 3-2.3-.8a7 7 0 01-1.7 1l-.5 2.4h-3.4l-.5-2.4a7 7 0 01-1.7-1l-2.3.8-1.7-3 1.8-1.6a7 7 0 010-2L4.1 8.6l1.7-3 2.3.8a7 7 0 011.7-1z" /><circle cx="12" cy="12" r="2.6" /></svg>
+)
+export const SendIcon = () => (
+  <svg {...base} aria-hidden><path d="M4 12l16-8-6 16-3-7-7-1z" /></svg>
 )
 export const SunIcon = () => (
   <svg {...base} aria-hidden><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5" /></svg>
