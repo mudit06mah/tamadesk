@@ -113,6 +113,7 @@ def summarize(conn: sqlite3.Connection, brain: Brain, item_id: int, about: str) 
         f"Summarize this for a busy person.\nAbout them: {about}\n\nTitle: {it['title']}\n\n{text[:6000]}",
         SUMMARY_SCHEMA,
         light=True,
+        kind="summary",
     )
     data["summary"] = out = {k: clean(v) for k, v in out.items()}
     conn.execute("UPDATE items SET data = ? WHERE id = ?", (json.dumps(data), item_id))

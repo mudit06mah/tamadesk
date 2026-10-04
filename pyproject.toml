@@ -1,6 +1,6 @@
 [project]
 name = "tamadesk"
-version = "0.2.0"
+version = "0.3.0"
 description = "A pixel companion that turns your day into an adventure: quests, a daily log, reminders and drafts, powered by your own Claude Code."
 readme = "README.md"
 license = "MIT"

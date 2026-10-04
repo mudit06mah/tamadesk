@@ -1151,68 +1151,13 @@ kbd {
 }
 
 /* ----------------------------------------------------------------- today */
-.capture {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 26px;
-  padding: 8px 8px 8px 16px;
-  background: var(--field);
-  border: 2px solid var(--line);
-  border-radius: var(--r);
-  box-shadow: var(--shadow);
-  transition: box-shadow 0.15s, transform 0.15s;
-}
 
-.capture:focus-within {
-  transform: translate(-1px, -1px);
-  box-shadow: 7px 7px 0 var(--ink);
-}
 
-.capture-prompt {
-  font-family: 'VT323', monospace;
-  font-size: 26px;
-  color: var(--accent);
-}
 
-.capture input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text);
-  font-family: 'VT323', monospace;
-  font-size: 24px;
-}
 
-.capture input::placeholder {
-  color: var(--muted);
-  opacity: 0.7;
-}
 
-.capture-kind {
-  padding: 2px 10px;
-  border: 2px solid var(--line);
-  border-radius: 999px;
-  font-size: 13px;
-  white-space: nowrap;
-}
 
-.k-todo {
-  background: var(--accent-soft);
-}
-.k-reminder {
-  background: var(--butter);
-  color: #1c1a21;
-}
-.k-log {
-  background: var(--sage);
-}
 
-.w-buddy {
-  grid-column: span 7;
-}
 
 .stat-col {
   grid-column: span 5;
@@ -1562,50 +1507,12 @@ li:hover .icon-x,
 }
 
 /* ----------------------------------------------------------------- write, journal, settings */
-.write-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 26px;
-  align-items: start;
-}
 
-.write-main {
-  display: flex;
-  flex-direction: column;
-  gap: 26px;
-}
 
-.write-side {
-  position: sticky;
-  top: 20px;
-}
 
-.draft-subject {
-  font-size: 18px;
-  margin: 6px 0 10px;
-}
 
-.draft-body {
-  white-space: pre-wrap;
-  margin: 0;
-  padding: 12px;
-  background: var(--field);
-  border: 2px solid var(--line);
-  border-radius: 8px;
-}
 
-.voice p {
-  font-family: 'VT323', monospace;
-  font-size: 19px;
-  line-height: 1.3;
-  margin: 0 0 10px;
-}
 
-.write-side .field-label {
-  margin: 16px 0 8px;
-  font-size: 14px;
-  color: var(--muted);
-}
 
 .journal,
 .settings {
@@ -1620,19 +1527,12 @@ li:hover .icon-x,
 
 /* ----------------------------------------------------------------- responsive */
 @media (max-width: 1150px) {
-  .w-buddy,
   .stat-col,
   .w-todos,
   .w-rem,
   .w-log,
   .w-recap {
     grid-column: span 12;
-  }
-  .write-grid {
-    grid-template-columns: 1fr;
-  }
-  .write-side {
-    position: static;
   }
 }
 
@@ -1998,4 +1898,386 @@ a.item-title:hover {
 
 .skip-btn:hover {
   background: color-mix(in srgb, var(--coral) 30%, var(--win));
+}
+
+/* ================================================================= ask: the heart of the desk */
+.ask {
+  margin-bottom: 28px;
+}
+
+.ask-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.ask-buddy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.lv-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 104px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.lv-mini b {
+  font-weight: 400;
+}
+
+.ask-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ask-bubble {
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.ask-bubble.working {
+  background: var(--accent-soft);
+}
+
+.ask-box {
+  padding: 12px 14px 10px;
+  background: var(--field);
+  border: 3px solid var(--line);
+  border-radius: calc(var(--r) + 4px);
+  box-shadow: 6px 6px 0 var(--accent), 6px 6px 0 2px var(--ink);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.ask-box:focus-within {
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0 var(--accent), 8px 8px 0 2px var(--ink);
+}
+
+.ask-box.busy {
+  animation: ask-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes ask-glow {
+  50% {
+    box-shadow: 6px 6px 0 var(--butter), 6px 6px 0 2px var(--ink);
+  }
+}
+
+.ask-box textarea {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  font-family: 'VT323', monospace;
+  font-size: 26px;
+  line-height: 1.15;
+}
+
+.ask-box textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.ask-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ask-hint {
+  flex: 1;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ask-hint.free {
+  color: var(--good);
+}
+
+.ask-budget {
+  position: relative;
+  font-size: 12px;
+  color: var(--muted);
+  padding-bottom: 4px;
+}
+
+.ask-budget i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.ask-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.convo {
+  margin-top: 18px;
+  border: 2px solid var(--line);
+  border-radius: var(--r);
+  background: var(--win);
+  box-shadow: var(--shadow-sm);
+}
+
+.convo-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 2px solid var(--line);
+  background: var(--win-2);
+}
+
+.convo-bar select {
+  max-width: 60%;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+}
+
+.convo-log {
+  max-height: min(520px, 60vh);
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.msg.user {
+  align-self: flex-end;
+  max-width: 80%;
+  padding: 8px 12px;
+  border: 2px solid var(--line);
+  border-radius: 14px 14px 4px 14px;
+  background: var(--accent-soft);
+  font-family: 'VT323', monospace;
+  font-size: 19px;
+}
+
+.msg.bot {
+  max-width: 92%;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.steps-toggle {
+  all: unset;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.step {
+  font-size: 13px;
+  padding: 2px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: var(--win-2);
+}
+
+.step-glyph {
+  color: var(--accent);
+}
+
+.md {
+  font-family: 'VT323', monospace;
+  font-size: 19px;
+  line-height: 1.3;
+}
+
+.md p,
+.md ul,
+.md ol {
+  margin: 0 0 8px;
+}
+
+.md ul,
+.md ol {
+  padding-left: 22px;
+}
+
+.md h4 {
+  margin: 6px 0;
+  font-family: 'DotGothic16', monospace;
+  font-weight: 400;
+}
+
+.md code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--win-2);
+}
+
+.msg-cost {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ----------------------------------------------------------------- mail */
+.mail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 26px;
+  align-items: start;
+}
+
+.mail-side {
+  position: sticky;
+  top: 20px;
+}
+
+.mail-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.draft-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.draft-to {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.to-label {
+  font-size: 12px;
+  padding: 0 6px;
+  border: 2px solid var(--line);
+  border-radius: 6px;
+}
+
+.draft-card input,
+.draft-card textarea {
+  padding: 6px 10px;
+  background: var(--field);
+  color: var(--text);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  font-family: 'VT323', monospace;
+  font-size: 19px;
+}
+
+.draft-to input {
+  flex: 1;
+  min-width: 0;
+}
+
+.draft-card input.unsure {
+  border-color: var(--butter);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--butter) 50%, transparent);
+}
+
+.draft-card textarea {
+  resize: vertical;
+  line-height: 1.25;
+}
+
+.draft-card .unsure-box input {
+  width: auto;
+  margin: 0;
+}
+
+.unsure-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 2px dashed var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--butter) 35%, var(--win));
+  font-size: 13px;
+}
+
+.grow {
+  flex: 1;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sent-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+@media (max-width: 1150px) {
+  .mail-grid {
+    grid-template-columns: 1fr;
+  }
+  .mail-side {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .ask-head {
+    grid-template-columns: 1fr;
+  }
+  .ask-buddy {
+    flex-direction: row;
+  }
+}
+
+.voice p {
+  margin: 0 0 10px;
+  font-family: 'VT323', monospace;
+  font-size: 19px;
+  line-height: 1.3;
+}
+
+.mail-side .field-label {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* long tab names stay inside their tile */
+.tiles {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tile-label {
+  max-width: 100%;
+  text-align: center;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

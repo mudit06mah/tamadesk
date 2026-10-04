@@ -1,11 +1,12 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, when, type Mod, type State } from './api'
+import { api, askBolt, when, type Mod, type State } from './api'
 import { Companion, CompanionCtx } from './Companion'
 import { FxProvider, useFx } from './fx/Fx'
 import { play, setSound, soundOn } from './fx/sound'
-import { BookIcon, GearIcon, HomeIcon, ModIcon, MoonIcon, PenIcon, PlusIcon, SunIcon } from './icons'
+import { BookIcon, GearIcon, HomeIcon, MailIcon, ModIcon, MoonIcon, PlusIcon, SunIcon } from './icons'
 import { Journal } from './Journal'
+import { Mail } from './Mail'
 import { ModulePage } from './ModulePage'
 import { NewGame } from './NewGame'
 import { Settings } from './Settings'
@@ -13,12 +14,11 @@ import { NewTabDialog } from './Templates'
 import { Today } from './Today'
 import { Dialog } from './ui'
 import { isTyping, type Toast } from './util'
-import { Write } from './Write'
 
 // fixed pages, plus one `m:<id>` page per module tab (between Today and Journal)
 export type Page = string
 type Theme = 'paper' | 'phosphor'
-const pagesFor = (mods: Mod[]): Page[] => ['today', ...mods.map((m) => `m:${m.id}`), 'journal', 'write', 'settings']
+const pagesFor = (mods: Mod[]): Page[] => ['today', ...mods.map((m) => `m:${m.id}`), 'mail', 'journal', 'settings']
 
 function initialTheme(): Theme {
   const q = new URLSearchParams(location.search).get('theme')
@@ -67,6 +67,10 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   const [mods, setMods] = useState<Mod[]>([])
   const [newTab, setNewTab] = useState(false)
   const pages = pagesFor(mods)
+  // an "ask Bolt" from another page: switch to Today and hand the request over once Ask is mounted
+  const [pendingAsk, setPendingAsk] = useState<{ text: string; send: boolean } | null>(null)
+  const pageRef = useRef(page)
+  pageRef.current = page
   const [theme, setTheme] = useState<Theme>(initialTheme)
   const [sound, setSoundState] = useState(soundOn())
   const [offline, setOffline] = useState(false)
@@ -78,6 +82,16 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   useEffect(() => {
     if (location.hash.slice(1) !== page) history.pushState(null, '', `${location.pathname}${location.search}#${page}`)
   }, [page])
+
+  useEffect(() => {
+    const onAsk = (e: Event) => {
+      if (pageRef.current === 'today') return
+      setPendingAsk((e as CustomEvent<{ text: string; send: boolean }>).detail)
+      setPage('today')
+    }
+    window.addEventListener('tamadesk:ask', onAsk)
+    return () => window.removeEventListener('tamadesk:ask', onAsk)
+  }, [])
 
   useEffect(() => {
     const onHash = () => setPage(location.hash.slice(1) || 'today')
@@ -138,6 +152,11 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key === '/') {
+        e.preventDefault()
+        askBolt('')
+        return
+      }
       const n = Number(e.key)
       if (n >= 1 && n <= Math.min(9, pages.length)) go(pages[n - 1])
     }
@@ -167,8 +186,8 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   const tiles: { id: Page; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'today', label: 'Today', icon: <HomeIcon />, count: state.today.open.length },
     ...mods.map((m) => ({ id: `m:${m.id}`, label: m.name, icon: <ModIcon name={m.icon} />, count: m.new })),
+    { id: 'mail', label: 'Mail', icon: <MailIcon /> },
     { id: 'journal', label: 'Journal', icon: <BookIcon /> },
-    { id: 'write', label: 'Write', icon: <PenIcon /> },
     { id: 'settings', label: 'Settings', icon: <GearIcon /> },
   ]
 
@@ -180,7 +199,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
             <Companion size={34} />
           </span>
           <span className="logo-text">
-            TAMADESK<small>v0.2 · {name}</small>
+            TAMADESK<small>v0.3 · {name}</small>
           </span>
         </div>
 
@@ -238,10 +257,10 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
       <main className="screen">
         <AnimatePresence mode="wait">
           <motion.div key={page} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
-            {(page === 'today' || (page.startsWith('m:') && !mod)) && <Today state={state} refresh={refresh} notify={notify} go={go} />}
+            {(page === 'today' || (page.startsWith('m:') && !mod)) && <Today state={state} refresh={refresh} notify={notify} go={go} pendingAsk={pendingAsk} clearPending={() => setPendingAsk(null)} />}
             {mod && <ModulePage key={mod.id} mod={mod} notify={notify} onChange={refresh} onDeleted={() => (go('today'), void refresh())} />}
             {page === 'journal' && <Journal />}
-            {page === 'write' && <Write notify={notify} />}
+            {page === 'mail' && <Mail notify={notify} onChange={refresh} />}
             {page === 'settings' && <Settings state={state} refresh={refresh} notify={notify} replay={() => setReplay(true)} />}
           </motion.div>
         </AnimatePresence>

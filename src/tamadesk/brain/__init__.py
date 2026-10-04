@@ -21,7 +21,9 @@ class BrainError(RuntimeError):
 class Brain(Protocol):
     name: str
 
-    def ask(self, prompt: str, schema: dict, *, system: str = "", light: bool = False) -> dict: ...
+    def ask(
+        self, prompt: str, schema: dict, *, system: str = "", light: bool = False, kind: str = "brain"
+    ) -> dict: ...
 
     def check(self) -> tuple[bool, str]: ...
 

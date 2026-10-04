@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from tamadesk.core import db
+from tamadesk.core.config import get_settings
 from tamadesk.modules import engine, rank, sources, spec
 from tamadesk.modules.sources import Item
 
@@ -133,3 +134,35 @@ def test_github_splits_or_queries(monkeypatch):
     monkeypatch.setattr(sources, "get_json", fake)
     out = sources.github("topic:game-engine OR topic:gamedev")
     assert calls == ["topic:game-engine", "topic:gamedev"] and [i.title for i in out] == ["r/2", "r/1"]
+
+
+def test_assistant_tools_and_mcp_protocol(client, monkeypatch):
+    from tamadesk.assistant import mcp, tools
+
+    s = get_settings()
+    listing = mcp.handle(s, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    names = {t["name"] for t in listing["result"]["tools"]}
+    assert {"search", "create_tab", "add_to_tab", "draft_email", "set_reminder"} <= names
+    assert mcp.handle(s, {"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
+    r = mcp.handle(s, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                       "params": {"name": "set_reminder", "arguments": {"text": "stretch", "when": "in 20 minutes"}}})  # fmt: skip
+    assert "reminder set" in r["result"]["content"][0]["text"]
+    bad = mcp.handle(s, {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "add_to_tab",
+                         "arguments": {"tab": "nope", "items": []}}})  # fmt: skip
+    assert "no tab" in bad["result"]["content"][0]["text"]
+    assert "draft #" in tools.call(
+        s, "draft_email", {"subject": "Hey — you", "body": "hi", "email_sure": False}
+    )
+    assert client.get("/api/mail").json()["items"][0]["subject"] == "Hey, you"  # dashes cleaned
+
+
+def test_reach_servers_only_allowed_ones(tmp_path, monkeypatch):
+    import json
+
+    from tamadesk.assistant import runner
+
+    (tmp_path / ".mcporter").mkdir()
+    (tmp_path / ".mcporter" / "mcporter.json").write_text(json.dumps({"mcpServers": {
+        "exa": {"baseUrl": "https://mcp.exa.ai/mcp"}, "twitter": {"baseUrl": "https://x/mcp"}}}))  # fmt: skip
+    monkeypatch.setattr(runner.Path, "home", lambda: tmp_path)
+    assert runner.reach_servers(get_settings()) == {"exa": {"type": "http", "url": "https://mcp.exa.ai/mcp"}}

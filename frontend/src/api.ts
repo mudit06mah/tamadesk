@@ -7,7 +7,31 @@ export type Activity = { kind: string; detail: string; xp: number; at: string }
 export type Recap = { headline: string; recap: string; tomorrow: string[]; at?: string }
 export type Sample = { id: number; kind: string; title: string; body: string; created_at: string }
 export type Voice = { summary: string; traits: string[]; do: string[]; dont: string[]; phrases: string[] }
-export type Draft = { id: number; ask: string; subject: string; body: string; created_at: string }
+export type MailDraft = {
+  id: number
+  subject: string
+  body: string
+  to_name: string | null
+  to_email: string | null
+  email_source: string | null
+  email_sure: number
+  item_id: number | null
+  status: 'draft' | 'sent'
+  sent_at: string | null
+  error: string | null
+  created_at: string
+}
+export type MailBox = { items: MailDraft[]; ready: boolean; address: string; dry_run: boolean; daily_cap: number; sent_today: number }
+export type Step = { name: string; input: Record<string, unknown> }
+export type ChatMsg = { id?: number; role: 'user' | 'assistant'; text: string; steps?: Step[]; cost_usd?: number | null; tokens?: number | null }
+export type AskEvent =
+  | { type: 'chat'; chat_id: number }
+  | { type: 'session'; session_id: string }
+  | { type: 'text'; text: string }
+  | ({ type: 'tool' } & Step)
+  | { type: 'done'; text: string; error: boolean; cost_usd: number | null; tokens: number }
+  | { type: 'error'; text: string }
+export type Usage = { usd: number; tokens: number; runs: number; daily_usd: number; max_usd_per_ask: number; model: string; effort: string }
 export type Question = { key: string; q: string; hint: string }
 export type CompanionChoice = { species: string; label: string; blurb: string }
 
@@ -19,7 +43,7 @@ export type Mod = {
   every: string
   sources: ({ type: string } & Record<string, unknown>)[]
   interests: string[]
-  actions: ('save' | 'skip' | 'open' | 'summarize' | 'todo' | 'done')[]
+  actions: ('save' | 'skip' | 'open' | 'summarize' | 'todo' | 'done' | 'draft')[]
   reasons: string[]
   new: number
   saved: number
@@ -93,7 +117,6 @@ export const api = {
   modules: () => call<Mod[]>('/modules'),
   templates: () => call<Template[]>('/templates'),
   createModule: (template: string, params: Record<string, string>) => post<Mod>('/modules', { template, params }),
-  askModule: (wish: string) => post<Mod>('/modules/ask', { wish }),
   moduleYaml: (id: string) => call<{ yaml: string }>(`/modules/${id}/yaml`),
   saveModuleYaml: (id: string, yaml: string) => call<Mod>(`/modules/${id}`, { method: 'PUT', body: JSON.stringify({ yaml }) }),
   deleteModule: (id: string) => call(`/modules/${id}`, { method: 'DELETE' }),
@@ -113,14 +136,44 @@ export const api = {
   deleteSample: (id: number) => call(`/samples/${id}`, { method: 'DELETE' }),
   voice: () => call<Voice | null>('/voice'),
   buildVoice: () => post<Voice>('/voice/build'),
-  drafts: () => call<Draft[]>('/drafts'),
-  draft: (ask: string) => post<Draft>('/drafts', { ask }),
-  dropDraft: (id: number) => post(`/drafts/${id}/drop`),
+  mail: (status: 'draft' | 'sent') => call<MailBox>(`/mail?status=${status}`),
+  newMail: (d: Partial<MailDraft>) => post<{ id: number }>('/mail', d),
+  editMail: (id: number, d: { subject: string; body: string; to_name: string; to_email: string }) =>
+    call(`/mail/${id}`, { method: 'PATCH', body: JSON.stringify(d) }),
+  sendMail: (id: number, verified: boolean) => post<{ dry_run: boolean; to: string }>(`/mail/${id}/send`, { verified }),
+  dropMail: (id: number) => post(`/mail/${id}/drop`),
+  mailSetup: (b: { address: string; from_name: string; app_password: string; dry_run: boolean; daily_cap: number }) =>
+    call<{ ok: boolean; ready: boolean }>('/mail/setup', { method: 'PUT', body: JSON.stringify(b) }),
+  chats: () => call<{ id: number; title: string; updated_at: string }[]>('/chats'),
+  chat: (id: number) => call<ChatMsg[]>(`/chats/${id}`),
+  usage: () => call<Usage>('/usage'),
   recap: () => post<Recap>('/recap'),
   brainCheck: () => call<{ ok: boolean; name: string; detail: string }>('/brain/check'),
-  settings: (s: { brain_kind?: string; brain_model?: string; recap_hour?: number; todo_goal?: number }) =>
+  settings: (s: { brain_kind?: string; brain_model?: string; recap_hour?: number; todo_goal?: number; assistant_model?: string; assistant_effort?: string; max_usd_per_ask?: number; daily_usd?: number }) =>
     call<{ ok: boolean }>('/settings', { method: 'PUT', body: JSON.stringify(s) }),
 }
+
+/** Ask the assistant; calls onEvent for each streamed step. Resolves when the run ends. */
+export async function ask(text: string, chatId: number | null, onEvent: (e: AskEvent) => void): Promise<void> {
+  const r = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, chat_id: chatId }) })
+  if (!r.ok || !r.body) {
+    const j = await r.json().catch(() => ({}))
+    throw new Error(typeof j.detail === 'string' ? j.detail : `HTTP ${r.status}`)
+  }
+  const reader = r.body.pipeThrough(new TextDecoderStream()).getReader()
+  let buf = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buf += value
+    const lines = buf.split('\n')
+    buf = lines.pop() ?? ''
+    for (const l of lines) if (l.trim()) onEvent(JSON.parse(l) as AskEvent)
+  }
+}
+
+/** Open the Ask box from anywhere (e.g. a lead's "draft" button), optionally sending right away. */
+export const askBolt = (text: string, send = false) => window.dispatchEvent(new CustomEvent('tamadesk:ask', { detail: { text, send } }))
 
 /** SQLite UTC 'YYYY-MM-DD HH:MM:SS' -> Date */
 export const utc = (ts: string) => new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z')

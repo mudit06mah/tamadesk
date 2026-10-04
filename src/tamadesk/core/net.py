@@ -15,13 +15,14 @@ class NetError(RuntimeError):
 
 
 def fetch(url: str, *, params: dict | None = None, body: dict | None = None, timeout: float = 20,
-          headers: dict | None = None) -> bytes:  # fmt: skip
+          headers: dict | None = None, method: str | None = None) -> bytes:  # fmt: skip
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
     req = urllib.request.Request(
         url,
         data=json.dumps(body).encode() if body is not None else None,
         headers=UA | {"Content-Type": "application/json"} | (headers or {}),
+        method=method,
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:

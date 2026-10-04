@@ -37,6 +37,21 @@ class BrainCfg(BaseModel):
     timeout_s: int = 180
 
 
+class AssistantCfg(BaseModel):
+    model: str = "sonnet"  # the "ask" agent; light jobs use brain.light_model
+    effort: str = "medium"  # low | medium | high
+    max_usd_per_ask: float = 0.50  # Claude Code's --max-budget-usd for one request
+    daily_usd: float = 3.00  # asks stop for the day past this (usage is API-equivalent dollars)
+    reach_servers: list[str] = ["exa"]  # agent-reach MCP servers to plug in (login-free only)
+
+
+class MailCfg(BaseModel):
+    address: str = ""  # Gmail address; the app password lives in <home>/secrets.json (0600)
+    from_name: str = ""
+    dry_run: bool = True  # everything goes to your own address until switched off
+    daily_cap: int = 20
+
+
 class DayCfg(BaseModel):
     recap_hour: int = 21  # local hour for the evening recap
     todo_goal: int = 3  # todos per day that count as a "good day"
@@ -47,6 +62,8 @@ class Settings(BaseModel):
     server: ServerCfg = ServerCfg()
     brain: BrainCfg = BrainCfg()
     day: DayCfg = DayCfg()
+    assistant: AssistantCfg = AssistantCfg()
+    mail: MailCfg = MailCfg()
 
     @property
     def db_path(self) -> Path:

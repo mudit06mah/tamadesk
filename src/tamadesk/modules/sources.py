@@ -188,6 +188,30 @@ def parse_exa(text: str) -> list[Item]:
     return out
 
 
+@source("agent")
+def agent(task: str, limit: int = 8) -> list[Item]:
+    """A Claude run with the free search tools that curates items for a fuzzy need. Costs tokens on
+    every refresh, so tabs should use it only when no feed or search query can express the need."""
+    from tamadesk.assistant import runner
+    from tamadesk.core import db
+    from tamadesk.core.config import get_settings
+
+    schema = {"type": "object", "required": ["items"], "properties": {"items": {"type": "array", "items": {
+        "type": "object", "required": ["title", "url"],
+        "properties": {"title": {"type": "string"}, "url": {"type": "string"}, "subtitle": {"type": "string"},
+                       "body": {"type": "string", "description": "1-2 sentences on why it fits"}}}}}}  # fmt: skip
+    s = get_settings()
+    conn = db.connect(s.db_path)
+    try:
+        out = runner.structured(s, conn, f"Find up to {limit} fresh, specific results for this standing request, "
+                                f"using the search tool. Return only items, no commentary.\nRequest: {task}",
+                                schema, kind="agent_tab", budget=min(0.3, s.assistant.max_usd_per_ask))  # fmt: skip
+    finally:
+        conn.close()
+    return [Item(ext_id=uid(i["url"]), title=clean(i["title"], 200), url=i["url"], subtitle=i.get("subtitle", ""),
+                 body=clean(i.get("body", ""))) for i in out["items"][:limit]]  # fmt: skip
+
+
 def read_page(url: str, limit: int = 6000) -> str:
     """Page text via Jina Reader (agent-reach's 'any web page' channel). Used for on-demand summaries."""
     return get_text(f"https://r.jina.ai/{url}", headers={"X-Return-Format": "text"}, timeout=40)[:limit]

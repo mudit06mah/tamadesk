@@ -2,7 +2,7 @@
 // (one tiny call on the light model). The same TemplateCard is used in New Game.
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
-import { api, type Mod, type Template } from './api'
+import { api, askBolt, type Mod, type Template } from './api'
 import { useCompanion } from './Companion'
 import { useFx } from './fx/Fx'
 import { ModIcon } from './icons'
@@ -108,7 +108,14 @@ export function NewTabDialog({
     setBusy(true)
     try {
       if (interests.trim() !== saved.trim()) await api.setAbout('interests', interests)
-      done(wish.trim() ? await api.askModule(wish) : await api.createModule(picks[0].template, picks[0].params))
+      if (wish.trim()) {
+        // describing it = asking the companion, who designs the tab (and fills it) with real reasoning
+        askBolt(`Make me a tab: ${wish.trim()}`, true)
+        setWish('')
+        onClose()
+        return
+      }
+      done(await api.createModule(picks[0].template, picks[0].params))
     } catch (e) {
       notify((e as Error).message, 'err')
     } finally {
@@ -130,7 +137,7 @@ export function NewTabDialog({
           ))}
         </div>
         <label className="field">
-          <span>…or just describe it ({buddy.name} picks the setup)</span>
+          <span>…or describe it and {buddy.name} builds it (uses a little of your Claude budget)</span>
           <input value={wish} onChange={(e) => setWish(e.target.value)} placeholder="papers on GPU quantum simulation, every morning" />
         </label>
         <div className="dialog-actions">

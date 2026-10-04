@@ -9,6 +9,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from tamadesk.api import jobs
+from tamadesk.api.assistant import router as assistant_router
+from tamadesk.api.mail import router as mail_router
 from tamadesk.api.modules import router as modules_router
 from tamadesk.api.routes import router
 from tamadesk.core import db
@@ -33,6 +35,8 @@ def create_app(scheduler: bool = True) -> FastAPI:
     app = FastAPI(title="tamadesk", docs_url="/api/docs", openapi_url="/api/openapi.json", lifespan=lifespan)
     app.include_router(router)
     app.include_router(modules_router)
+    app.include_router(assistant_router)
+    app.include_router(mail_router)
 
     @app.get("/api/health")
     def health() -> dict:

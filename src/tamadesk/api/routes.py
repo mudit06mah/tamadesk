@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from tamadesk.brain import BrainError, get_brain
 from tamadesk.core import db
 from tamadesk.core.config import get_settings, save_settings
-from tamadesk.life import capture, game, writer
+from tamadesk.life import actions, capture, game, writer
 from tamadesk.life.onboarding import COMPANIONS, QUESTIONS
 
 router = APIRouter(prefix="/api")
@@ -145,28 +145,9 @@ class CaptureIn(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
 
 
-def add_todo(conn: sqlite3.Connection, title: str, due: str | None = None) -> int:
-    rid = conn.execute("INSERT INTO todos (title, due_at) VALUES (?, ?)", (title, due)).lastrowid
-    db.event(conn, "todo_added", ref_id=rid, detail=title)
-    return rid
-
-
 @router.post("/capture")
 def do_capture(body: CaptureIn, conn: Conn) -> dict:
-    c = capture.parse(body.text)
-    due = capture.sql_ts(c.due_at) if c.due_at else None
-    with db.transaction(conn):
-        if c.kind == "todo":
-            rid, xp = add_todo(conn, c.text, due), 0
-        elif c.kind == "reminder":
-            rid = conn.execute("INSERT INTO reminders (text, due_at) VALUES (?, ?)", (c.text, due)).lastrowid
-            db.event(conn, "reminder_set", ref_id=rid, detail=c.text)
-            xp = 0
-        else:
-            rid = conn.execute("INSERT INTO log_entries (body) VALUES (?)", (c.text,)).lastrowid
-            xp = game.XP["logged"]
-            db.event(conn, "logged", ref_id=rid, detail=c.text, xp=xp)
-    return {"kind": c.kind, "id": rid, "text": c.text, "due_at": due, "xp": xp}
+    return actions.capture_text(conn, body.text)
 
 
 @router.post("/todos/{tid}/{action}")
@@ -253,34 +234,6 @@ def build_voice(conn: Conn) -> dict:
 # ---------------------------------------------------------------- drafts + recap
 
 
-class DraftIn(BaseModel):
-    ask: str = Field(min_length=5, max_length=4000)
-
-
-@router.post("/drafts")
-def new_draft(body: DraftIn, conn: Conn) -> dict:
-    d = _brain_call(lambda: writer.draft_email(conn, get_brain(get_settings()), body.ask))
-    with db.transaction(conn):
-        rid = conn.execute("INSERT INTO drafts (ask, subject, body) VALUES (?, ?, ?)",
-                           (body.ask, d["subject"], d["body"])).lastrowid  # fmt: skip
-        db.event(conn, "drafted", ref_id=rid, detail=d["subject"], xp=game.XP["drafted"])
-    return {"id": rid, **d}
-
-
-@router.get("/drafts")
-def drafts(conn: Conn) -> list[dict]:
-    return [
-        dict(r)
-        for r in conn.execute("SELECT * FROM drafts WHERE status != 'dropped' ORDER BY id DESC LIMIT 30")
-    ]
-
-
-@router.post("/drafts/{did}/drop")
-def drop_draft(did: int, conn: Conn) -> dict:
-    conn.execute("UPDATE drafts SET status = 'dropped' WHERE id = ?", (did,))
-    return {"ok": True}
-
-
 @router.post("/recap")
 def make_recap(conn: Conn) -> dict:
     rows = today_rows(conn)
@@ -306,6 +259,10 @@ def brain_check() -> dict:
 
 
 class SettingsIn(BaseModel):
+    assistant_model: str | None = None
+    assistant_effort: Literal["low", "medium", "high"] | None = None
+    max_usd_per_ask: float | None = Field(default=None, gt=0, le=10)
+    daily_usd: float | None = Field(default=None, gt=0, le=100)
     brain_kind: Literal["claude_code", "ollama"] | None = None
     brain_model: str | None = None
     recap_hour: int | None = Field(default=None, ge=0, le=23)
@@ -315,6 +272,10 @@ class SettingsIn(BaseModel):
 @router.put("/settings")
 def put_settings(body: SettingsIn) -> dict:
     s = get_settings()
+    for key, attr in (("assistant_model", "model"), ("assistant_effort", "effort"),
+                      ("max_usd_per_ask", "max_usd_per_ask"), ("daily_usd", "daily_usd")):  # fmt: skip
+        if (v := getattr(body, key)) is not None:
+            setattr(s.assistant, attr, v)
     if body.brain_kind:
         s.brain.kind = body.brain_kind
     if body.brain_model:

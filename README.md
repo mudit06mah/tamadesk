@@ -13,17 +13,37 @@ The writing is done by **your own** Claude Code (or a local model via Ollama).
 
 ## What it does
 
-- **Tabs that fit you**: tell your companion what to keep an eye on and a tab hatches for it.
-  - A morning feed of research papers.
-  - Tech news on your topics.
-  - Rising GitHub repos.
-  - New uploads from YouTube channels.
-  - A web watch for anything you describe.
-  - A swipe deck of leads: companies that might need what you sell.
+**Ask your companion to do things, and it does them.** One box at the top of your desk:
 
-  Every tab is a small YAML file. Pick one from the gallery (no AI needed) or describe it in a
-  sentence. Saving and skipping teaches a tiny local ranker your taste, so the best items float up,
-  and they show up on Today as picks.
+- *"Keep an eye on new GitHub repos about agent tools that cut token usage, and pixel-art tools"*:
+  Bolt designs precise searches, makes a tab that refreshes every morning, fills it, and shows
+  you the best few right away.
+- *"Find 15 small e-commerce brands in Europe that might need my design studio, with a contact"*:
+  a lead deck you swipe through. Press ✉ on a lead and Bolt researches it and drafts an email in
+  your voice into **Mail**.
+- *"Every morning, the best new papers on GPU quantum simulation"*, *"remind me to call mom at 6"*,
+  *"what changed in Kubernetes 1.34?"*: the same box.
+
+You watch every step as it happens: "searching GitHub…", "hatching a tab…", "drafting…".
+
+**Under the hood:**
+- Bolt runs on **your own Claude Code**, plugged into tamadesk's tools over MCP and into
+  agent-reach's login-free web search. It can't use a shell or edit files.
+- **You set the budget:** a cap per ask and a daily cap. Every answer shows roughly what it used.
+- `todo …`, `remind me …` and `log …` are handled instantly on the desk and cost nothing.
+
+**Tabs** are what Bolt (or you, from the gallery) builds for recurring needs:
+- They're small YAML files with free sources: arXiv, Hacker News, GitHub, RSS, and Exa web search.
+- A tiny local ranker learns your taste from what you keep and skip.
+- Refreshing a tab costs no tokens, unless it uses an `agent` source for needs that no search can
+  express.
+
+**Mail:**
+- Bolt's drafts wait for you there. You edit them and send through your Gmail with an app
+  password.
+- It starts in dry run, with a daily cap.
+- Outreach emails get an opt-out line.
+- Guessed addresses are flagged UNSURE until you check them.
 
 - **Quick capture**: one box for everything.
   - `bought groceries, finally fixed the bug` goes to your daily log.
@@ -31,8 +51,8 @@ The writing is done by **your own** Claude Code (or a local model via Ollama).
   - `remind me to stretch in 20 min` or `remind me to call mom at 6pm` sets a reminder.
 - **Todos** with XP, streaks and levels. Undoing a todo takes its XP back, so you can't farm it.
 - **Reminders** ring in the app and as a desktop notification.
-- **Your voice**: paste a few emails or essays you wrote. tamadesk studies them once, then drafts
-  in your style without the corporate filler.
+- **Your voice**: paste a few emails or essays you wrote (in Mail). tamadesk studies them once,
+  and every draft follows your style.
 - **Evening recap**: your companion writes up your day and picks up to 3 small things for tomorrow.
 - **New Game setup**: you answer a few questions about yourself, pick a companion, and you're in.
 
@@ -60,9 +80,10 @@ Every tab pulls from free, login-free sources:
   `pipx install agent-reach && agent-reach install`. Only the Leads and Web watch tabs need it.
 
 Fetching, ranking and storage all run on your machine. The fetch jobs use at most two threads,
-and old items are pruned, so tamadesk stays small. The brain only writes short text: picking a
-template for "describe it", and a summary when you press tl;dr. Both run on the cheapest model
-(haiku).
+and old items are pruned, so tamadesk stays small.
+
+- Asks run on the model and effort you choose (Settings → assistant), within your caps.
+- Small background jobs (tl;dr summaries, the recap, studying your voice) use the cheapest model.
 
 ### Pick a brain
 

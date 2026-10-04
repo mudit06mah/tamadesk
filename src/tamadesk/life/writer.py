@@ -1,4 +1,4 @@
-"""Everything the brain writes: the voice profile, email drafts and the evening recap.
+"""What the light brain writes outside the assistant: the voice profile and the evening recap.
 
 The voice profile is built once from the user's own writing samples, then reused, so drafts sound
 like the user and not like a chatbot.
@@ -12,12 +12,6 @@ import sqlite3
 from tamadesk.brain import Brain
 from tamadesk.core import db
 
-SLOP = (
-    "No em dashes. Never use: 'I hope this email finds you well', 'delve', 'leverage', 'excited to', "
-    "'passionate about', 'I wanted to reach out', 'in today's fast-paced world'. No bullet points in "
-    "emails. Short paragraphs. Never invent facts about the writer that aren't in the notes below."
-)
-
 VOICE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -28,12 +22,6 @@ VOICE_SCHEMA = {
         "phrases": {"type": "array", "items": {"type": "string"}, "description": "real phrases they use"},
     },
     "required": ["summary", "traits", "do", "dont", "phrases"],
-}
-
-DRAFT_SCHEMA = {
-    "type": "object",
-    "properties": {"subject": {"type": "string"}, "body": {"type": "string"}},
-    "required": ["subject", "body"],
 }
 
 RECAP_SCHEMA = {
@@ -70,22 +58,6 @@ def build_voice(conn: sqlite3.Connection, brain: Brain) -> dict:
     )
     db.set_profile(conn, "voice", voice)
     return voice
-
-
-def draft_email(conn: sqlite3.Connection, brain: Brain, ask: str) -> dict:
-    voice = db.get_profile(conn, "voice")
-    voice_txt = (
-        f"Voice: {voice['summary']}\nDo: {'; '.join(voice['do'])}\nDon't: {'; '.join(voice['dont'])}\n"
-        f"Phrases they use: {'; '.join(voice['phrases'])}"
-        if voice
-        else "No voice profile yet: keep it plain, short and friendly."
-    )
-    d = brain.ask(
-        f"Write an email for this request, in the writer's own voice.\n\nRequest: {ask}\n\n"
-        f"About the writer:\n{_about(conn)}\n\n{voice_txt}\n\nRules: {SLOP}",
-        DRAFT_SCHEMA,
-    )
-    return {"subject": clean(d["subject"]), "body": clean(d["body"])}
 
 
 def recap(conn: sqlite3.Connection, brain: Brain, day_rows: dict) -> dict:

@@ -31,7 +31,9 @@ class OllamaBrain:
             return False, f"model {self.s.brain.model!r} not pulled. Run `ollama pull {self.s.brain.model}`."
         return True, f"Ollama, model {self.s.brain.model}"
 
-    def ask(self, prompt: str, schema: dict, *, system: str = "", light: bool = False) -> dict:
+    def ask(
+        self, prompt: str, schema: dict, *, system: str = "", light: bool = False, kind: str = "brain"
+    ) -> dict:
         messages = ([{"role": "system", "content": system}] if system else []) + [
             {"role": "user", "content": prompt}
         ]

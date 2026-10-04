@@ -1,6 +1,6 @@
 # tamadesk
 
-An open-source (MIT) desk companion: daily log, todos, reminders, drafting in the user's own voice, and an evening recap, all gamified with a pixel companion. `docs/plan.md` is the source of truth for scope, roadmap, and the art, motion and sound direction.
+An open-source (MIT) personal assistant with a pixel companion: ask it to do things (it runs on the user's own Claude Code with tamadesk's tools), plus tabs that watch the web, Mail, todos, reminders, a daily log and an evening recap, all gamified. `docs/plan.md` is the source of truth for scope, roadmap, and the art, motion and sound direction.
 
 ## Layout
 - `src/tamadesk/`: Python package (FastAPI, Typer CLI).
@@ -24,7 +24,9 @@ An open-source (MIT) desk companion: daily log, todos, reminders, drafting in th
 - **XP only for real progress.** Every XP change is an `events` row, and undo must reverse it.
 - **Nothing is sent anywhere** (mail, network) without an explicit user click.
 - **Sources:** only free, login-free channels: official public APIs, RSS/Atom, and agent-reach's login-free channels (Exa via mcporter, Jina Reader). Never cookie/login channels (LinkedIn, X, Reddit, Instagram) or scraping-hostile sites.
-- **Tokens and compute:** fetching, ranking and rendering cost zero tokens. Brain calls are short text only, on demand, using `light=True` (haiku) unless the user is drafting. Keep jobs on the 2-thread scheduler and prune data.
+- **Assistant first:** the Ask box (`assistant/`) is the main way to use the app; buttons and the template gallery are the manual fallback. New capabilities should be a tool in `assistant/tools.py` (reusing existing code) before they're a page.
+- **Tokens and compute:** every Claude call is capped (`--max-budget-usd`), recorded in `usage`, and checked against the daily budget. Fetching, ranking and rendering cost zero tokens. Background jobs use `light=True`. Keep jobs on the 2-thread scheduler and prune data.
+- **Assistant safety:** only `--tools WebFetch` plus the tamadesk and allowed agent-reach MCP servers. Never a shell or file-edit tool. Tools that change things outside the desk (sending mail) don't exist: Bolt drafts, the user sends.
 - **Modules, not custom pages:** a new kind of tab is a template YAML plus, if needed, one `@source` function. New views are rare and must work for any module.
 - **DRY:** one HTTP helper (`core/net.py`), one item card plus action hook (`ItemCard.tsx`), and one template card for the gallery and New Game.
 - **Motion and sound:** follow the tables in `docs/plan.md`. Respect reduced motion and the mute toggle.

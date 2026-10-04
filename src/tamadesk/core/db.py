@@ -115,6 +115,42 @@ MIGRATIONS: list[str] = [
         added      INTEGER
     );
     """,
+    # 3: the assistant (chats + messages), usage accounting, and mail on drafts
+    """
+    CREATE TABLE chats (
+        id         INTEGER PRIMARY KEY,
+        session_id TEXT,                    -- Claude Code session, resumed for follow-ups
+        title      TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE messages (
+        id         INTEGER PRIMARY KEY,
+        chat_id    INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+        role       TEXT NOT NULL,           -- user|assistant
+        text       TEXT NOT NULL,
+        steps      TEXT,                    -- JSON: tools the assistant used
+        cost_usd   REAL,
+        tokens     INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX messages_chat ON messages(chat_id, id);
+    CREATE TABLE usage (
+        id       INTEGER PRIMARY KEY,
+        kind     TEXT NOT NULL,             -- ask|agent_tab|summary|author|draft|voice|recap
+        cost_usd REAL NOT NULL DEFAULT 0,
+        tokens   INTEGER NOT NULL DEFAULT 0,
+        at       TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX usage_at ON usage(at);
+    ALTER TABLE drafts ADD COLUMN to_name TEXT;
+    ALTER TABLE drafts ADD COLUMN to_email TEXT;
+    ALTER TABLE drafts ADD COLUMN email_source TEXT;
+    ALTER TABLE drafts ADD COLUMN email_sure INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE drafts ADD COLUMN item_id INTEGER;
+    ALTER TABLE drafts ADD COLUMN sent_at TEXT;
+    ALTER TABLE drafts ADD COLUMN error TEXT;
+    """,
 ]
 
 

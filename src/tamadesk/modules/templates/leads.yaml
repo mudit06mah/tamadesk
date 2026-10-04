@@ -10,5 +10,5 @@ module:
   every: 7d
   sources:
     - {type: exa, query: "category:company ${who}", limit: 15, objective: "company homepages, not lists or articles"}
-  actions: [save, skip, todo, open]
+  actions: [save, skip, draft, todo, open]
   reasons: [not a fit, too big, no contact info, already know them]

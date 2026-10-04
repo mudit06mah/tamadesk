@@ -13,7 +13,7 @@ from tamadesk.core.config import Settings
 
 TEMPLATES = Path(__file__).parent / "templates"
 View = Literal["feed", "deck"]
-Action = Literal["save", "skip", "open", "summarize", "todo", "done"]
+Action = Literal["save", "skip", "open", "summarize", "todo", "done", "draft"]
 SCHEDULE_RE = re.compile(r"^(?:(\d+)([mhd])|daily (\d{1,2}):(\d{2}))$")
 
 

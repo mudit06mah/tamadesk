@@ -1,23 +1,14 @@
-// Today: one capture box, your companion, and the day's todos, reminders, log and recap.
+// Today: ask your companion anything at the top; below, the day's picks, todos, reminders, log and recap.
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api, clock, when, type ModItem, type State, type Todo } from './api'
-import { Companion, type Mood } from './Companion'
+import { AskPanel } from './Ask'
+import { type Mood } from './Companion'
 import { useFx } from './fx/Fx'
 import { FlameIcon } from './icons'
 import { ItemCard, useItemActions } from './ItemCard'
-import { Bar, Seg, Win } from './ui'
+import { Seg, Win } from './ui'
 import type { Toast } from './util'
-
-const POKES = ['hehe', 'that tickles!', "I'm awake, I'm awake", 'one thing at a time :)', '*happy wiggle*', 'boop']
-
-/** Mirrors backend/life/capture.py closely enough to preview what Enter will do. */
-function guessKind(t: string): 'todo' | 'reminder' | 'log' | null {
-  if (!t.trim()) return null
-  if (/^\s*remind\s+me\b/i.test(t)) return 'reminder'
-  if (/^\s*(todo\b|t:|\[\s?\]|-\s*\[\s?\])/i.test(t)) return 'todo'
-  return 'log'
-}
 
 function line(s: State, name: string, picks: ModItem[]): { mood: Mood; text: string } {
   const h = new Date().getHours()
@@ -40,19 +31,19 @@ export function Today({
   refresh,
   notify,
   go,
+  pendingAsk,
+  clearPending,
 }: {
   state: State
   refresh: () => Promise<void>
   notify: (t: string, k?: Toast['kind']) => void
   go: (page: string) => void
+  pendingAsk: { text: string; send: boolean } | null
+  clearPending: () => void
 }) {
   const fx = useFx()
-  const [text, setText] = useState('')
-  const [poke, setPoke] = useState<string | null>(null)
   const [recapBusy, setRecapBusy] = useState(false)
   const [cheerN, setCheerN] = useState(0)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const kind = guessKind(text)
   const companion = s.companion ?? { species: 'blob', name: 'buddy' }
   const [picks, setPicks] = useState<ModItem[]>([])
   useEffect(() => {
@@ -64,34 +55,6 @@ export function Today({
   })
   const { mood, text: say } = useMemo(() => line(s, companion.name, picks), [s, companion.name, picks])
 
-  // "/" or "n" jumps to the capture box from anywhere on the page
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.key === '/' || e.key === 'n') && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-        e.preventDefault()
-        inputRef.current?.focus()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
-  const submit = async () => {
-    if (!text.trim()) return
-    try {
-      const r = await api.capture(text)
-      fx.sound('capture')
-      const target = r.kind === 'todo' ? 'win-todos' : r.kind === 'reminder' ? 'win-reminders' : 'win-log'
-      setText('')
-      await fx.fly(inputRef.current, target)
-      if (r.xp) fx.float(document.getElementById(target), `+${r.xp} XP`)
-      if (r.kind === 'reminder' && r.due_at) notify(`Reminder set for ${when(r.due_at)}`)
-      await refresh()
-    } catch (e) {
-      notify((e as Error).message, 'err')
-    }
-  }
-
   const doTodo = async (t: Todo, action: 'done' | 'undo' | 'drop', el: Element | null) => {
     try {
       const r = await api.todo(t.id, action)
@@ -99,7 +62,7 @@ export function Today({
         fx.sound('check')
         fx.burstAt(el)
         if (r.xp) fx.float(el, `+${r.xp} XP`)
-        setCheerN((n) => n + 1)
+        setCheerN((n) => n + 1) // the companion up top does a little jump
         if (s.today.done.length + 1 === s.day.todo_goal) {
           setTimeout(() => fx.banner({ kind: 'goal', title: 'GOOD DAY!', sub: `${s.day.todo_goal} things done. ${companion.name} is very proud.` }), 600)
         }
@@ -138,67 +101,19 @@ export function Today({
 
   return (
     <div className="today">
-      <form
-        className="capture"
-        onSubmit={(e) => {
-          e.preventDefault()
-          void submit()
-        }}
-      >
-        <span className="capture-prompt">&gt;</span>
-        <input
-          ref={inputRef}
-          autoFocus
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="what's up?  try: todo send the invoice · remind me to stretch in 20 min · fixed the bug!"
-          aria-label="Quick capture"
-        />
-        <AnimatePresence mode="wait">
-          {kind && (
-            <motion.span key={kind} className={`capture-kind k-${kind}`} initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }}>
-              {kind === 'log' ? 'log it' : kind}
-            </motion.span>
-          )}
-        </AnimatePresence>
-        <button className="btn solid" disabled={!text.trim()}>
-          ↵
-        </button>
-      </form>
+      <AskPanel
+        greeting={say}
+        mood={mood}
+        interests={s.about.interests ?? ''}
+        level={{ level: p.level, xp: p.xp, into: p.level_xp, need: p.level_need }}
+        notify={notify}
+        onChange={refresh}
+        cheer={cheerN}
+        pending={pendingAsk}
+        clearPending={clearPending}
+      />
 
       <div className="widgets">
-        <Win title={`${companion.name.toLowerCase()}.exe`} className="w-buddy">
-          <div className="pip-row">
-            <Companion
-              species={companion.species}
-              mood={poke ? 'happy' : mood}
-              size={96}
-              cheer={cheerN}
-              onPoke={() => {
-                fx.sound('poke')
-                setPoke(POKES[Math.floor(Math.random() * POKES.length)])
-                setTimeout(() => setPoke(null), 1800)
-              }}
-            />
-            <motion.div key={poke ?? say} className="bubble" initial={{ opacity: 0, scale: 0.9, x: -6 }} animate={{ opacity: 1, scale: 1, x: 0 }}>
-              {poke ?? say}
-            </motion.div>
-          </div>
-          <div className="level-row">
-            <div className="lv">
-              <span className="lv-label">LV</span>
-              <Seg value={p.level} digits={2} />
-            </div>
-            <div className="xp-col">
-              <div className="xp-text">
-                <span>{p.xp} XP</span>
-                <span className="muted">{p.level_need - p.level_xp} to next</span>
-              </div>
-              <Bar value={p.level_xp / Math.max(1, p.level_need)} label="XP to next level" />
-            </div>
-          </div>
-        </Win>
-
         <div className="stat-col">
           <div className={`stat-tile ${done >= s.day.todo_goal ? 'inverse' : ''}`}>
             <span className="stat-name">done today</span>

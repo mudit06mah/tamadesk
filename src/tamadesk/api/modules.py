@@ -6,14 +6,15 @@ import json
 
 import yaml
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from tamadesk.api import jobs
-from tamadesk.api.routes import Conn, _brain_call, add_todo
+from tamadesk.api.routes import Conn, _brain_call
 from tamadesk.brain import get_brain
 from tamadesk.core import db
 from tamadesk.core.config import get_settings
-from tamadesk.modules import author, engine, spec
+from tamadesk.life.actions import add_todo
+from tamadesk.modules import engine, spec
 
 router = APIRouter(prefix="/api")
 
@@ -68,19 +69,13 @@ def create_module(body: FromTemplate) -> dict:
         raise HTTPException(422, str(e)) from e
 
 
-class Wish(BaseModel):
-    wish: str = Field(min_length=3, max_length=500)
-
-
-@router.post("/modules/ask")
-def ask_for_module(body: Wish, conn: Conn) -> dict:
-    """'Make me a tab that…': one light brain call picks and fills a template."""
-    about = "; ".join(f"{k}: {v}" for k, v in db.get_profile(conn, "about", {}).items() if v)
+@router.post("/modules/spec")
+def create_from_spec(body: dict) -> dict:
+    """A full module spec (the assistant's create_tab tool posts here)."""
     try:
-        m = _brain_call(lambda: author.from_sentence(get_brain(get_settings()), body.wish, about))
-    except (ValueError, ValidationError) as e:
-        raise HTTPException(422, f"couldn't build that tab: {e}") from e
-    return _install(m)
+        return _install(spec.Module(**body))
+    except ValidationError as e:
+        raise HTTPException(422, str(e)) from e
 
 
 @router.get("/modules/{module_id}/yaml")

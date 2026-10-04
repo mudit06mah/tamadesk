@@ -61,6 +61,35 @@ Every brain call is `ask(prompt, schema) -> dict`. Adding a brain means one file
 - **Journal:** every log line, grouped by day.
 - **Settings:** brain kind and model, recap hour, daily goal.
 
+## The assistant (v0.3): ask first, manual second
+
+The top of the desk is one box: **ask Bolt to do it**. Each ask runs the user's own `claude -p`:
+- `--mcp-config` plugs in tamadesk's MCP server (`assistant/mcp.py`, a small stdio JSON-RPC loop
+  with no SDK) and agent-reach's login-free servers from `~/.mcporter/mcporter.json` (Exa).
+- `--tools WebFetch` is the only built-in tool, so there's no shell and no file edits.
+- `--max-budget-usd` caps each ask. `--resume` continues the conversation.
+- `stream-json` with partial messages turns into NDJSON events the UI animates: the companion's
+  bubble shows the current step, and step chips stack up in the reply.
+
+**Tools** (`assistant/tools.py`) reuse the same code as the buttons:
+- `search` (any free source)
+- `read_page`
+- `list_tabs`, `create_tab`, `delete_tab`, `add_to_tab`, `tab_items`
+- `add_todo`, `set_reminder`, `log`
+- `draft_email`
+
+**Budget:**
+- Per-ask and daily caps in Settings. Every Claude call lands in `usage` (ask, agent_tab, summary,
+  recap, voice).
+- The Ask box shows today's spend, and each reply shows its own cost in API-equivalent dollars.
+- Shortcuts (`todo`, `remind me`, `log`) never reach Claude.
+
+**Mail** replaces Write:
+- Drafts come from Bolt (`draft_email`), from a lead's ✉ button, or from you.
+- Sending goes through Gmail SMTP with an app password in `<home>/secrets.json` (0600).
+- Dry run by default, with a daily cap and an opt-out line on outreach.
+- Guessed addresses need an explicit "I checked this".
+
 ## Modules: tabs that adapt to the user (v0.2)
 
 The UI is not generated. A **module** is a YAML file in `<home>/modules/`. It names its sources,
@@ -89,11 +118,12 @@ reasons: []           # deck only: quick skip reasons
   declared interests. It's pure Python with no model to load, and it explains itself.
 - **Templates** (`modules/templates/*.yaml`): the gallery. `${param}` fields become the form in
   the "new tab" dialog and in New Game.
-- **"Describe it"** (`modules/author.py`): one light-model call picks a template and fills its
-  params. The YAML is built and validated in code, so the model can't invent a source.
-- **Token policy:** fetching, ranking and rendering cost zero tokens. The brain is used only for
-  short text, and only on demand: tab authoring and tl;dr summaries (cached per item).
-  Both go through `light_model` (haiku).
+- **"Describe it"** goes to the assistant, which designs the tab with `create_tab`. The spec is
+  validated in code, so a bad answer can't break the app.
+- **`agent` source:** for fuzzy needs no query can express, a capped Claude run curates items on
+  each refresh. It costs tokens, so Bolt is told to prefer real sources.
+- **Token policy:** fetching, ranking and rendering cost zero tokens. Reasoning happens when the
+  user asks for it, within their caps.
 - **Compute policy:**
   - At most 2 scheduler threads.
   - Each module keeps its best `keep` unseen items. Pruned and old skipped items become tiny

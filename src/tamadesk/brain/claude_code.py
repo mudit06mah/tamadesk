@@ -12,6 +12,7 @@ import shutil
 import subprocess
 
 from tamadesk.brain import BrainError
+from tamadesk.core import usage
 from tamadesk.core.config import Settings
 
 
@@ -34,7 +35,9 @@ class ClaudeCodeBrain:
             return False, "Claude Code is installed but not logged in. Run `claude` once to log in."
         return True, f"Claude Code, logged in ({info.get('authMethod', 'unknown')})"
 
-    def ask(self, prompt: str, schema: dict, *, system: str = "", light: bool = False) -> dict:
+    def ask(
+        self, prompt: str, schema: dict, *, system: str = "", light: bool = False, kind: str = "brain"
+    ) -> dict:
         """`light` = short text (summaries, picking a template): runs on the cheapest model."""
         cmd = [
             "claude", "-p", prompt,
@@ -72,6 +75,7 @@ class ClaudeCodeBrain:
         if raw.get("is_error") or proc.returncode != 0:
             msg = str(raw.get("result") or raw.get("subtype") or proc.stderr)[-500:]
             raise BrainError("rate_limit" if "limit" in msg.lower() else "failed", msg)
+        usage.record(self.s, kind, raw)
         out = raw.get("structured_output")
         if not isinstance(out, dict):
             raise BrainError("schema", f"no structured output: {str(raw.get('result'))[:300]}")

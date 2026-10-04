@@ -1,6 +1,6 @@
 // Settings: which brain, when the recap runs, the daily goal, and replaying the New Game setup.
 import { useEffect, useState } from 'react'
-import { api, type State } from './api'
+import { api, type State, type Usage } from './api'
 import { useFx } from './fx/Fx'
 import { Win } from './ui'
 import type { Toast } from './util'
@@ -24,14 +24,20 @@ export function Settings({
   const [hour, setHour] = useState(s.day.recap_hour)
   const [goal, setGoal] = useState(s.day.todo_goal)
   const [check, setCheck] = useState<{ ok: boolean; detail: string } | null>(null)
+  const [use, setUse] = useState<Usage | null>(null)
+  const [ai, setAi] = useState({ model: 'sonnet', effort: 'medium', per: 0.5, daily: 3 })
 
   useEffect(() => {
     void api.brainCheck().then(setCheck)
+    void api.usage().then((u) => {
+      setUse(u)
+      setAi({ model: u.model, effort: u.effort, per: u.max_usd_per_ask, daily: u.daily_usd })
+    })
   }, [])
 
   const save = async () => {
     try {
-      await api.settings({ brain_kind: kind, brain_model: model, recap_hour: hour, todo_goal: goal })
+      await api.settings({ brain_kind: kind, brain_model: model, recap_hour: hour, todo_goal: goal, assistant_model: ai.model, assistant_effort: ai.effort, max_usd_per_ask: ai.per, daily_usd: ai.daily })
       fx.sound('stamp')
       notify('Saved. Restart tamadesk for a new recap time to take effect.')
       setCheck(await api.brainCheck())
@@ -43,7 +49,37 @@ export function Settings({
 
   return (
     <div className="settings">
+      <Win title="assistant.sys">
+        <p className="muted small">
+          Everything you ask runs on your own Claude Code. Costs are what the same work would cost on the API, a fair way to see how
+          much you use. Today: ≈ ${use?.usd.toFixed(2) ?? '0.00'} over {use?.runs ?? 0} runs, {Math.round((use?.tokens ?? 0) / 1000)}k tokens.
+        </p>
+        <div className="chips">
+          {['haiku', 'sonnet', 'opus'].map((m) => (
+            <button key={m} className={`chip ${ai.model === m ? 'on' : ''}`} onClick={() => setAi({ ...ai, model: m })}>
+              {m === 'haiku' ? 'haiku (cheapest)' : m === 'opus' ? 'opus (smartest)' : 'sonnet (balanced)'}
+            </button>
+          ))}
+        </div>
+        <div className="chips">
+          {['low', 'medium', 'high'].map((e) => (
+            <button key={e} className={`chip ${ai.effort === e ? 'on' : ''}`} onClick={() => setAi({ ...ai, effort: e })}>
+              {e} effort
+            </button>
+          ))}
+        </div>
+        <label className="field">
+          <span>max per ask ($)</span>
+          <input type="number" step="0.05" min={0.05} max={10} value={ai.per} onChange={(e) => setAi({ ...ai, per: Number(e.target.value) })} />
+        </label>
+        <label className="field">
+          <span>daily budget ($)</span>
+          <input type="number" step="0.5" min={0.5} max={100} value={ai.daily} onChange={(e) => setAi({ ...ai, daily: Number(e.target.value) })} />
+        </label>
+      </Win>
+
       <Win title="brain.sys">
+        <p className="muted small">Used for the small background jobs (summaries, recap, voice study).</p>
         <div className="chips">
           {(['claude_code', 'ollama'] as const).map((k) => (
             <button

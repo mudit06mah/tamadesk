@@ -2,11 +2,11 @@
 // Today's picks all render this, so every view gets the same buttons, sounds and motion.
 import { motion } from 'motion/react'
 import { useState } from 'react'
-import { api, type Mod, type ModItem } from './api'
+import { api, askBolt, type Mod, type ModItem } from './api'
 import { useFx } from './fx/Fx'
 import type { Toast } from './util'
 
-export type Act = 'save' | 'skip' | 'done' | 'todo' | 'summarize'
+export type Act = 'save' | 'skip' | 'done' | 'todo' | 'summarize' | 'draft'
 
 export function useItemActions(notify: (t: string, k?: Toast['kind']) => void, onGone: (it: ModItem, status: string) => void) {
   const fx = useFx()
@@ -15,7 +15,10 @@ export function useItemActions(notify: (t: string, k?: Toast['kind']) => void, o
 
   const run = async (it: ModItem, a: Act, el: Element | null, reason = '') => {
     try {
-      if (a === 'todo') {
+      if (a === 'draft') {
+        // outreach is real work (research + writing): hand it to the companion
+        askBolt(`Research this lead and draft an outreach email to them in Mail (item ${it.id}): ${it.title} ${it.url ?? ''}`.trim(), true)
+      } else if (a === 'todo') {
         await api.itemTodo(it.id)
         fx.sound('capture')
         fx.float(el, '+ todo')
@@ -40,7 +43,7 @@ export function useItemActions(notify: (t: string, k?: Toast['kind']) => void, o
   return { run, busy, summaries }
 }
 
-const LABEL: Record<Act, string> = { save: '♥ keep', skip: '✕ skip', done: '✓ done', todo: '+ todo', summarize: '✦ tl;dr' }
+const LABEL: Record<Act, string> = { save: '♥ keep', skip: '✕ skip', done: '✓ done', todo: '+ todo', summarize: '✦ tl;dr', draft: '✉ email them' }
 
 export function ItemCard({
   it,

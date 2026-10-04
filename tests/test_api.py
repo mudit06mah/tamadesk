@@ -61,20 +61,6 @@ def test_recap_needs_something(client):
     assert client.post("/api/recap").status_code == 400
 
 
-def test_draft_uses_brain(client, monkeypatch):
-    class Fake:
-        name = "fake"
-
-        def ask(self, prompt, schema, system=""):
-            assert "Request: thank my mentor" in prompt
-            return {"subject": "Thanks!", "body": "Hey, thank you."}
-
-    monkeypatch.setattr("tamadesk.api.routes.get_brain", lambda s: Fake())
-    r = client.post("/api/drafts", json={"ask": "thank my mentor"}).json()
-    assert r["subject"] == "Thanks!"
-    assert client.get("/api/drafts").json()[0]["body"] == "Hey, thank you."
-
-
 def test_clean_strips_dashes():
     from tamadesk.life.writer import clean
 
