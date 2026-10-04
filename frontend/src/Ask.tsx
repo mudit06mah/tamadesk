@@ -2,16 +2,15 @@
 // Claude Code and the desk's tools, and you watch each step happen. "todo …", "remind me …" and
 // "log …" are handled instantly on the desk itself and cost nothing.
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, ask, type ChatMsg, type Step, type Usage } from './api'
+import { useEffect, useRef, useState } from 'react'
+import { type ChatMsg, type Step } from './api'
+import { FREE, useAsk } from './AskStore'
 import { Companion, useCompanion, type Mood } from './Companion'
 import { useFx } from './fx/Fx'
 import { Markdown } from './Markdown'
 import { Bar } from './ui'
-import type { Toast } from './util'
 
 const POKES = ['hehe', 'that tickles!', "I'm awake, I'm awake", 'one thing at a time :)', '*happy wiggle*', 'boop']
-const FREE = /^\s*(todo\b|t:|\[\s?\]|remind\s+me\b|log\b|>)/i
 
 /** What each tool call looks like to a person. */
 export function stepLabel(st: Step): string {
@@ -55,121 +54,29 @@ export function AskPanel({
   mood,
   interests,
   level,
-  notify,
-  onChange,
   cheer: outerCheer = 0,
-  pending,
-  clearPending,
 }: {
   greeting: string
   mood: Mood
   interests: string
   level: { level: number; xp: number; into: number; need: number }
-  notify: (t: string, k?: Toast['kind']) => void
-  onChange: () => void
   cheer?: number
-  pending?: { text: string; send: boolean } | null
-  clearPending?: () => void
 }) {
   const fx = useFx()
   const buddy = useCompanion()
-  const [text, setText] = useState('')
-  const [msgs, setMsgs] = useState<ChatMsg[]>([])
-  const [live, setLive] = useState<{ text: string; steps: Step[] } | null>(null)
-  const [chatId, setChatId] = useState<number | null>(null)
-  const [chats, setChats] = useState<{ id: number; title: string }[]>([])
-  const [usage, setUsage] = useState<Usage | null>(null)
+  const { text, setText, msgs, live, chatId, chats, usage, send, openChat, focusTick, doneTick } = useAsk()
   const [poke, setPoke] = useState<string | null>(null)
-  const [cheer, setCheer] = useState(0)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const running = live !== null
-
-  const loadMeta = useCallback(() => {
-    void api.usage().then(setUsage)
-    void api.chats().then(setChats)
-  }, [])
-  useEffect(loadMeta, [loadMeta])
+  const cheer = doneTick + outerCheer
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
   }, [msgs, live])
-
-  const send = useCallback(
-    async (raw: string) => {
-      const t = raw.trim()
-      if (!t || running) return
-      setText('')
-      if (FREE.test(t)) {
-        // instant and free: handled by the desk, no AI involved
-        const r = await api.capture(t.replace(/^\s*(log\b|>)\s*/i, ''))
-        fx.sound('capture')
-        fx.float(inputRef.current, r.kind === 'log' ? `+${r.xp} XP` : r.kind === 'todo' ? '+ todo' : 'reminder set')
-        onChange()
-        return
-      }
-      fx.sound('tap')
-      setMsgs((m) => [...m, { role: 'user', text: t }])
-      let liveText = ''
-      const steps: Step[] = []
-      setLive({ text: '', steps: [] })
-      let final: ChatMsg = { role: 'assistant', text: '' }
-      try {
-        await ask(t, chatId, (e) => {
-          if (e.type === 'chat') setChatId(e.chat_id)
-          if (e.type === 'text') {
-            liveText += e.text
-            setLive({ text: liveText, steps: [...steps] })
-          }
-          if (e.type === 'tool') {
-            fx.sound('poke')
-            steps.push({ name: e.name, input: e.input })
-            setLive({ text: liveText, steps: [...steps] })
-          }
-          if (e.type === 'done') final = { role: 'assistant', text: e.text, cost_usd: e.cost_usd, tokens: e.tokens }
-          if (e.type === 'error') final = { role: 'assistant', text: `Something went wrong: ${e.text}` }
-        })
-      } catch (err) {
-        notify((err as Error).message, 'err')
-        final = { role: 'assistant', text: (err as Error).message }
-      }
-      setMsgs((m) => [...m, { ...final, steps, text: final.text || liveText }])
-      setLive(null)
-      fx.sound('send')
-      setCheer((n) => n + 1)
-      loadMeta()
-      onChange()
-    },
-    [running, chatId, fx, onChange, loadMeta, notify],
-  )
-
-  // "ask Bolt" from anywhere: lead buttons, the new-tab dialog, the / key
-  const take = useCallback(
-    ({ text: t, send: now }: { text: string; send: boolean }) => {
-      if (now) void send(t)
-      else {
-        setText(t)
-        setTimeout(() => inputRef.current?.focus(), 50)
-      }
-    },
-    [send],
-  )
   useEffect(() => {
-    const onAsk = (e: Event) => take((e as CustomEvent<{ text: string; send: boolean }>).detail)
-    window.addEventListener('tamadesk:ask', onAsk)
-    return () => window.removeEventListener('tamadesk:ask', onAsk)
-  }, [take])
-  useEffect(() => {
-    if (!pending) return
-    clearPending?.()
-    take(pending)
-  }, [pending, clearPending, take])
-
-  const openChat = async (id: number | null) => {
-    setChatId(id)
-    setMsgs(id ? await api.chat(id) : [])
-    fx.sound('tap')
-  }
+    if (focusTick) inputRef.current?.focus()
+  }, [focusTick])
 
   const lastStep = live?.steps.at(-1)
   const say = poke ?? (running ? (lastStep ? `${stepLabel(lastStep)}…` : 'On it…') : msgs.length ? 'Anything else?' : greeting)
@@ -183,7 +90,7 @@ export function AskPanel({
           <Companion
             mood={running ? 'happy' : poke ? 'happy' : mood}
             size={104}
-            cheer={cheer + outerCheer}
+            cheer={cheer}
             onPoke={() => {
               fx.sound('poke')
               setPoke(POKES[Math.floor(Math.random() * POKES.length)])
@@ -251,7 +158,7 @@ export function AskPanel({
       {(msgs.length > 0 || running) && (
         <div className="convo">
           <div className="convo-bar">
-            <select value={chatId ?? ''} onChange={(e) => void openChat(e.target.value ? Number(e.target.value) : null)}>
+            <select value={chatId ?? ''} onChange={(e) => (fx.sound('tap'), void openChat(e.target.value ? Number(e.target.value) : null))}>
               <option value="">this conversation</option>
               {chats.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -259,7 +166,7 @@ export function AskPanel({
                 </option>
               ))}
             </select>
-            <button className="btn tiny ghost" disabled={running} onClick={() => void openChat(null)}>
+            <button className="btn tiny ghost" disabled={running} onClick={() => (fx.sound('tap'), void openChat(null))}>
               + new chat
             </button>
           </div>

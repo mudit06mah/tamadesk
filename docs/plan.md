@@ -103,6 +103,21 @@ The top of the desk is one box: **ask Bolt to do it**. Each ask runs the user's 
   scanlines and `dark` flips color-scheme. Adding one takes a single line.
 - The swipe deck was removed: every tab is the same ranked list.
 
+### v0.3.2: memory
+- **Conversation state** lives in `AskStore` above the pages. Streams survive navigation, and the
+  last chat is restored from localStorage.
+- **Raw layer:** SQLite FTS5 `recall` (porter stemming), filled by triggers on messages, log,
+  todos, drafts and kept items.
+- **Daily digests:** a light-model job at 03:30 (and 2 minutes after startup) turns each finished
+  day into `<home>/memory/YYYY-MM-DD.md`. Each file is a summary plus facts whose `#tags` are broader
+  words, so semantic recall works with plain full-text search.
+  - **The files are the source of truth.** `sync_files` re-indexes edited files, and a deleted
+    file means that day is forgotten for good.
+- **Tools:** `recall` (Bolt expands the query with synonyms and categories) and `day_notes`.
+  The last 4 days' summaries ride along in the prompt.
+- **Later:** weekly/monthly roll-up files for "what did I do in September", and optional local
+  embeddings if FTS + tags ever falls short.
+
 ## Modules: tabs that adapt to the user (v0.2)
 
 The UI is not generated. A **module** is a YAML file in `<home>/modules/`. It names its sources,

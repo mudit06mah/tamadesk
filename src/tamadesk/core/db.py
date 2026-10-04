@@ -161,6 +161,68 @@ MIGRATIONS: list[str] = [
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     """,
+    # 5: memory. Everything said or done is full-text indexed (recall), and each day is distilled
+    # into a short digest plus standalone facts tagged with broader words, so a later search for
+    # "that japanese dish" finds "wants to try sushi" without embeddings.
+    """
+    CREATE TABLE memories (
+        id         INTEGER PRIMARY KEY,
+        day        TEXT NOT NULL,           -- local YYYY-MM-DD
+        kind       TEXT NOT NULL,           -- digest|fact
+        text       TEXT NOT NULL,
+        tags       TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX memories_day ON memories(day, kind);
+
+    CREATE VIRTUAL TABLE recall USING fts5(
+        text, tags, kind UNINDEXED, ref UNINDEXED, day UNINDEXED, tokenize = 'porter unicode61'
+    );
+
+    CREATE TRIGGER recall_msg AFTER INSERT ON messages BEGIN
+        INSERT INTO recall (text, tags, kind, ref, day)
+        VALUES (new.text, '', 'chat_' || new.role, 'm:' || new.id || ':' || new.chat_id, date(new.created_at, 'localtime'));
+    END;
+    CREATE TRIGGER recall_msg_del AFTER DELETE ON messages BEGIN
+        DELETE FROM recall WHERE ref = 'm:' || old.id || ':' || old.chat_id;
+    END;
+    CREATE TRIGGER recall_log AFTER INSERT ON log_entries BEGIN
+        INSERT INTO recall (text, tags, kind, ref, day)
+        VALUES (new.body, '', 'log', 'l:' || new.id, date(new.created_at, 'localtime'));
+    END;
+    CREATE TRIGGER recall_todo AFTER INSERT ON todos BEGIN
+        INSERT INTO recall (text, tags, kind, ref, day)
+        VALUES (new.title, '', 'todo', 't:' || new.id, date(new.created_at, 'localtime'));
+    END;
+    CREATE TRIGGER recall_mail AFTER INSERT ON drafts BEGIN
+        INSERT INTO recall (text, tags, kind, ref, day)
+        VALUES (new.subject || ' ' || coalesce(new.to_name, '') || ' ' || new.body, '', 'mail', 'd:' || new.id,
+                date(new.created_at, 'localtime'));
+    END;
+    CREATE TRIGGER recall_kept AFTER UPDATE OF status ON items WHEN new.status = 'saved' BEGIN
+        INSERT INTO recall (text, tags, kind, ref, day)
+        VALUES (new.title || ' ' || coalesce(new.body, ''), new.module, 'kept', 'i:' || new.id, date('now', 'localtime'));
+    END;
+    CREATE TRIGGER recall_mem AFTER INSERT ON memories BEGIN
+        INSERT INTO recall (text, tags, kind, ref, day) VALUES (new.text, new.tags, new.kind, 'k:' || new.id, new.day);
+    END;
+    CREATE TRIGGER recall_mem_del AFTER DELETE ON memories BEGIN
+        DELETE FROM recall WHERE ref = 'k:' || old.id;
+    END;
+
+    INSERT INTO recall (text, tags, kind, ref, day)
+        SELECT text, '', 'chat_' || role, 'm:' || id || ':' || chat_id, date(created_at, 'localtime') FROM messages;
+    INSERT INTO recall (text, tags, kind, ref, day)
+        SELECT body, '', 'log', 'l:' || id, date(created_at, 'localtime') FROM log_entries;
+    INSERT INTO recall (text, tags, kind, ref, day)
+        SELECT title, '', 'todo', 't:' || id, date(created_at, 'localtime') FROM todos;
+    INSERT INTO recall (text, tags, kind, ref, day)
+        SELECT subject || ' ' || coalesce(to_name, '') || ' ' || body, '', 'mail', 'd:' || id, date(created_at, 'localtime')
+        FROM drafts;
+    INSERT INTO recall (text, tags, kind, ref, day)
+        SELECT title || ' ' || coalesce(body, ''), module, 'kept', 'i:' || id, date(coalesce(decided_at, created_at), 'localtime')
+        FROM items WHERE status = 'saved';
+    """,
 ]
 
 
@@ -176,18 +238,15 @@ def connect(path: Path) -> sqlite3.Connection:
 
 
 def migrate(conn: sqlite3.Connection) -> int:
-    """Apply pending migrations. Returns the resulting schema version."""
+    """Apply pending migrations, each atomically. Returns the resulting schema version.
+    executescript (not a split on ';') so migrations can hold triggers with BEGIN … END bodies."""
     current = conn.execute("PRAGMA user_version").fetchone()[0]
     for version, sql in enumerate(MIGRATIONS[current:], start=current + 1):
-        conn.execute("BEGIN")
         try:
-            for stmt in (s.strip() for s in sql.split(";")):
-                if stmt:
-                    conn.execute(stmt)
-            conn.execute(f"PRAGMA user_version={version}")
-            conn.execute("COMMIT")
+            conn.executescript(f"BEGIN;\n{sql}\nPRAGMA user_version = {version};\nCOMMIT;")
         except Exception:
-            conn.execute("ROLLBACK")
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
             raise
     return conn.execute("PRAGMA user_version").fetchone()[0]
 

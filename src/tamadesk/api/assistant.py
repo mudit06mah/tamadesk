@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
+import threading
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from tamadesk.api import jobs
 from tamadesk.api.routes import Conn
 from tamadesk.assistant import runner
 from tamadesk.core import db, usage
 from tamadesk.core.config import get_settings
+from tamadesk.life import memory
 
 router = APIRouter(prefix="/api")
 
@@ -92,6 +95,31 @@ def chat(chat_id: int, conn: Conn) -> list[dict]:
 @router.delete("/chats/{chat_id}")
 def delete_chat(chat_id: int, conn: Conn) -> dict:
     conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
+    return {"ok": True}
+
+
+@router.get("/memory/search")
+def memory_search(conn: Conn, q: str, since: str = "", until: str = "") -> list[dict]:
+    memory.sync_files(get_settings(), conn)  # pick up hand edits to the day files
+    return memory.search(conn, q, since=since, until=until, limit=30)
+
+
+@router.get("/memory/days")
+def memory_days(conn: Conn, offset: int = 0) -> dict:
+    memory.sync_files(get_settings(), conn)  # pick up hand edits to the day files
+    return {"days": memory.timeline(conn, offset), "pending": memory.pending_days(conn, 60)}
+
+
+@router.get("/memory/day/{day}")
+def memory_day(day: str, conn: Conn) -> dict:
+    memory.sync_files(get_settings(), conn)  # pick up hand edits to the day files
+    return memory.day_notes(conn, day)
+
+
+@router.post("/memory/digest")
+def memory_digest() -> dict:
+    """Summarize finished days that have no memory yet (runs in the background)."""
+    threading.Thread(target=jobs.memory_catch_up, args=(10,), daemon=True).start()
     return {"ok": True}
 
 

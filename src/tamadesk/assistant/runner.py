@@ -17,7 +17,7 @@ from pathlib import Path
 
 from tamadesk.core import db, usage
 from tamadesk.core.config import Settings
-from tamadesk.life import docs
+from tamadesk.life import docs, memory
 
 ALLOWED = ["mcp__tamadesk", "WebFetch"]
 
@@ -50,6 +50,8 @@ def system_prompt(s: Settings, conn: sqlite3.Connection) -> str:
     me = about.get("name") or "the user"
     lines = "\n".join(f"- {k}: {v}" for k, v in about.items() if v)
     rules = db.get_profile(conn, "writing_feedback", [])
+    memory.sync_files(s, conn)
+    recent = "\n".join(f"- {d['day']}: {d['text']}" for d in memory.recent(conn))
     files = "\n".join(
         f"- {d['name']} ({d['kind']}, {d['chars'] // 1000 + 1}k chars)" for d in docs.listing(conn)
     )
@@ -59,6 +61,7 @@ About {me}:
 {lines or "- (nothing yet)"}
 {f"Their documents (read with read_doc only when a task needs them, e.g. the resume for a job email, the product brief for outreach):{chr(10)}{files}" if files else ""}
 {"Their feedback on past drafts (follow it in everything you write for them):" + chr(10) + chr(10).join(f"- {r}" for r in rules) if rules else ""}
+{f"Recent days, from your memory:{chr(10)}{recent}" if recent else ""}
 {f"Their writing voice: {voice['summary']} Do: {'; '.join(voice['do'])}. Don't: {'; '.join(voice['dont'])}." if voice else ""}
 
 How you work:
@@ -67,6 +70,7 @@ How you work:
 - Anything recurring ("keep an eye on", "every morning", "find me X regularly") becomes a tab via create_tab, with precise sources (GitHub qualifiers like topic:x language:y; several narrow queries beat one broad one). Then put the best current results in with add_to_tab so it isn't empty.
 - Emails go to Mail as drafts via draft_email, in {me}'s voice, short and specific. Never say an email was sent. Only use addresses published on a page you saw (pass it as email_source); a guessed address must have email_sure=false.
 - Todos, reminders and log lines: use the tools, then confirm in one line.
+- Questions about the past ("what was that dish…", "what did I do on…", "when did I email…"): use recall with several alternative words and broader categories, then day_notes for detail. Answer with the date. If nothing turns up, say so; never guess.
 - Reply in short markdown: a sentence or two, then bullets with links if useful. No preamble. Never invent facts about {me} or about things you didn't look up."""
 
 

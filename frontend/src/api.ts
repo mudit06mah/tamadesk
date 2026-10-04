@@ -34,6 +34,8 @@ export type AskEvent =
 export type Usage = { usd: number; tokens: number; runs: number; daily_usd: number; max_usd_per_ask: number; model: string; effort: string }
 export type GhRow = { title: string; url: string; number: number; repo: string; updated_at: string; draft: boolean; review: string | null; checks: string | null; comments: number; author: string | null }
 export type GitHubStatus = { error?: string; login?: string; prs?: GhRow[]; issues?: GhRow[]; reviews?: GhRow[] }
+export type MemHit = { day: string; kind: string; text: string; ref: string }
+export type MemDay = { day: string; things: number; chats: { id: number; title: string }[]; summary: string | null; facts: string[] }
 export type Doc = { id: number; name: string; kind: string; chars: number; created_at: string }
 export type Question = { key: string; q: string; hint: string }
 export type CompanionChoice = { species: string; label: string; blurb: string }
@@ -150,6 +152,10 @@ export const api = {
   chats: () => call<{ id: number; title: string; updated_at: string }[]>('/chats'),
   chat: (id: number) => call<ChatMsg[]>(`/chats/${id}`),
   usage: () => call<Usage>('/usage'),
+  memorySearch: (q: string) => call<MemHit[]>(`/memory/search?q=${encodeURIComponent(q)}`),
+  memoryDays: (offset = 0) => call<{ days: MemDay[]; pending: string[] }>(`/memory/days?offset=${offset}`),
+  memoryDay: (day: string) => call<{ day: string; summary: string | null; facts: string[]; raw: string }>(`/memory/day/${day}`),
+  memoryDigest: () => post('/memory/digest'),
   github: (refresh = false) => call<GitHubStatus>(`/github${refresh ? '?refresh=true' : ''}`),
   docs: () => call<Doc[]>('/docs'),
   addDoc: (name: string, kind: string, data_b64: string) => post<{ id: number }>('/docs', { name, kind, data_b64 }),
@@ -180,7 +186,8 @@ export async function ask(text: string, chatId: number | null, onEvent: (e: AskE
 }
 
 /** Open the Ask box from anywhere (e.g. a lead's "draft" button), optionally sending right away. */
-export const askBolt = (text: string, send = false) => window.dispatchEvent(new CustomEvent('tamadesk:ask', { detail: { text, send } }))
+export const askBolt = (text: string, send = false, chat?: number) =>
+  window.dispatchEvent(new CustomEvent('tamadesk:ask', { detail: { text, send, chat } }))
 
 /** SQLite UTC 'YYYY-MM-DD HH:MM:SS' -> Date */
 export const utc = (ts: string) => new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z')

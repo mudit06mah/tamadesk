@@ -9,7 +9,7 @@ import json
 import logging
 import shutil
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -74,6 +74,30 @@ def evening_recap() -> None:
         conn.close()
 
 
+def memory_catch_up(limit: int = 5) -> int:
+    """Digest finished days that have no memory yet (light model, within the daily budget)."""
+    from tamadesk.assistant.runner import BudgetError, check_budget
+    from tamadesk.life import memory
+
+    s = get_settings()
+    conn = db.connect(s.db_path)
+    done = 0
+    try:
+        memory.sync_files(s, conn)
+        for day in memory.pending_days(conn, limit):
+            try:
+                check_budget(s, conn)
+                memory.digest(s, conn, get_brain(s), day)
+                done += 1
+            except BudgetError:
+                break
+            except Exception:
+                log.exception("memory digest failed for %s", day)
+    finally:
+        conn.close()
+    return done
+
+
 def run_module(module_id: str) -> None:
     s = get_settings()
     m = spec.get(s, module_id)
@@ -113,6 +137,9 @@ def start(s: Settings) -> None:
     )  # local tz: recap_hour is yours
     _sched.add_job(ring_due, "interval", seconds=20, id="ring", **ONCE)
     _sched.add_job(evening_recap, "cron", hour=s.day.recap_hour, minute=0, id="recap", **ONCE)
+    _sched.add_job(memory_catch_up, "cron", hour=3, minute=30, id="memory", **ONCE)
+    _sched.add_job(memory_catch_up, id="memory-boot", next_run_time=datetime.now().astimezone() + timedelta(minutes=2),
+                   **ONCE)  # fmt: skip
     _sched.start()
     sync_modules(s)
 

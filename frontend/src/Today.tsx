@@ -31,15 +31,11 @@ export function Today({
   refresh,
   notify,
   go,
-  pendingAsk,
-  clearPending,
 }: {
   state: State
   refresh: () => Promise<void>
   notify: (t: string, k?: Toast['kind']) => void
   go: (page: string) => void
-  pendingAsk: { text: string; send: boolean } | null
-  clearPending: () => void
 }) {
   const fx = useFx()
   const [recapBusy, setRecapBusy] = useState(false)
@@ -106,11 +102,7 @@ export function Today({
         mood={mood}
         interests={s.about.interests ?? ''}
         level={{ level: p.level, xp: p.xp, into: p.level_xp, need: p.level_need }}
-        notify={notify}
-        onChange={refresh}
         cheer={cheerN}
-        pending={pendingAsk}
-        clearPending={clearPending}
       />
 
       <div className="widgets">

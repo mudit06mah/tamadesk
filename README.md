@@ -32,6 +32,15 @@ You watch every step as it happens: "searching GitHub…", "hatching a tab…", 
 - **You set the budget:** a cap per ask and a daily cap. Every answer shows roughly what it used.
 - `todo …`, `remind me …` and `log …` are handled instantly on the desk and cost nothing.
 
+**Memory:**
+- Every conversation is saved and survives tab switches and reloads.
+- Every chat, log line, todo and email is searchable instantly, for free.
+- Each night your companion writes the day down as a short markdown file:
+  `memory/2026-10-03.md`, holding a summary plus standalone facts tagged with broader words.
+  "Wants to try the omakase place" is tagged `#japanese #food #dish`, so *"what was that japanese
+  dish I wanted to try?"* finds it a month later.
+- The files are yours: read them, fix a fact, or delete a day to make it forget.
+
 **GitHub:** your open PRs with review decision and CI state, issues assigned to you, and PRs
 waiting for your review, all through your own `gh` login. Ask Bolt "which stuck PR should I fix
 first?".

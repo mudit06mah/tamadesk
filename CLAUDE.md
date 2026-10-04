@@ -9,7 +9,7 @@ An open-source (MIT) personal assistant with a pixel companion: ask it to do thi
   - `life/` holds capture, game, onboarding and writer.
   - `api/` holds the routes and the scheduler.
 - `frontend/`: Vite + React + TS. `npm run build` goes to `frontend/dist`, which the backend serves at `/`.
-- User data lives in `~/.local/share/tamadesk` (or `TAMADESK_HOME`), never in the repo.
+- User data lives in `~/.local/share/tamadesk` (or `TAMADESK_HOME`), never in the repo. Long-term memory is markdown in its `memory/` folder (source of truth); SQLite only indexes it.
 
 ## Commands
 - `uv run tamadesk serve [--reload]`: runs on 127.0.0.1:6206

@@ -4,11 +4,12 @@ import { api, askBolt, when, type Mod, type State } from './api'
 import { Companion, CompanionCtx } from './Companion'
 import { FxProvider, useFx } from './fx/Fx'
 import { play, setSound, soundOn } from './fx/sound'
-import { BookIcon, CodeIcon, GearIcon, HomeIcon, MailIcon, ModIcon, PaletteIcon, PlusIcon } from './icons'
+import { BrainIcon, CodeIcon, GearIcon, HomeIcon, MailIcon, ModIcon, PaletteIcon, PlusIcon } from './icons'
 import { GitHub } from './GitHub'
 import { applyTheme, savedTheme } from './themes'
 import { ThemePicker } from './ThemePicker'
-import { Journal } from './Journal'
+import { AskProvider } from './AskStore'
+import { Memory } from './Memory'
 import { Mail } from './Mail'
 import { ModulePage } from './ModulePage'
 import { NewGame } from './NewGame'
@@ -20,7 +21,7 @@ import { isTyping, type Toast } from './util'
 
 // fixed pages, plus one `m:<id>` page per module tab (between Today and Journal)
 export type Page = string
-const CORE: Page[] = ['today', 'mail', 'github', 'journal']
+const CORE: Page[] = ['today', 'mail', 'github', 'memory']
 const pagesFor = (mods: Mod[]): Page[] => [...CORE, ...mods.map((m) => `m:${m.id}`), 'settings']
 
 function remembered(key: string): number | null {
@@ -58,8 +59,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   const [mods, setMods] = useState<Mod[]>([])
   const [newTab, setNewTab] = useState(false)
   const pages = pagesFor(mods)
-  // an "ask Bolt" from another page: switch to Today and hand the request over once Ask is mounted
-  const [pendingAsk, setPendingAsk] = useState<{ text: string; send: boolean } | null>(null)
+  // an "ask Bolt" from another page: switch to Today (the conversation itself lives in AskProvider)
   const pageRef = useRef(page)
   pageRef.current = page
   const [theme, setTheme] = useState(savedTheme)
@@ -88,10 +88,8 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   }, [page])
 
   useEffect(() => {
-    const onAsk = (e: Event) => {
-      if (pageRef.current === 'today') return
-      setPendingAsk((e as CustomEvent<{ text: string; send: boolean }>).detail)
-      setPage('today')
+    const onAsk = () => {
+      if (pageRef.current !== 'today') setPage('today')
     }
     window.addEventListener('tamadesk:ask', onAsk)
     return () => window.removeEventListener('tamadesk:ask', onAsk)
@@ -191,7 +189,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
     { id: 'today', label: 'Today', icon: <HomeIcon />, count: state.today.open.length },
     { id: 'mail', label: 'Mail', icon: <MailIcon />, count: state.mail_drafts },
     { id: 'github', label: 'GitHub', icon: <CodeIcon /> },
-    { id: 'journal', label: 'Journal', icon: <BookIcon /> },
+    { id: 'memory', label: 'Memory', icon: <BrainIcon /> },
   ]
   const navRow = (t: { id: Page; label: string; icon: React.ReactNode; count?: number }, big = false) => {
     const key = pages.indexOf(t.id) + 1
@@ -216,6 +214,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   }
 
   return (
+    <AskProvider notify={notify} onChange={refresh}>
     <div className="desk">
       <aside className="dock">
         <div className="logo">
@@ -288,9 +287,9 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
       <main className="screen">
         <AnimatePresence mode="wait">
           <motion.div key={page} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
-            {(page === 'today' || (page.startsWith('m:') && !mod)) && <Today state={state} refresh={refresh} notify={notify} go={go} pendingAsk={pendingAsk} clearPending={() => setPendingAsk(null)} />}
+            {(page === 'today' || (page.startsWith('m:') && !mod)) && <Today state={state} refresh={refresh} notify={notify} go={go} />}
             {mod && <ModulePage key={mod.id} mod={mod} notify={notify} onChange={refresh} onDeleted={() => (go('today'), void refresh())} />}
-            {page === 'journal' && <Journal />}
+            {page === 'memory' && <Memory notify={notify} />}
             {page === 'mail' && <Mail notify={notify} onChange={refresh} />}
             {page === 'github' && <GitHub notify={notify} />}
             {page === 'settings' && <Settings state={state} refresh={refresh} notify={notify} replay={() => setReplay(true)} theme={theme} setTheme={setTheme} />}
@@ -350,5 +349,6 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
         )}
       </AnimatePresence>
     </div>
+    </AskProvider>
   )
 }

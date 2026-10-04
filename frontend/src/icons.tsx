@@ -51,6 +51,9 @@ export const MailIcon = () => (
   <svg {...base} aria-hidden><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></svg>
 )
 
+export const BrainIcon = () => (
+  <svg {...base} aria-hidden><path d="M9 4a3 3 0 00-3 3 3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 1V5a3 3 0 00-3-1z" /><path d="M15 4a3 3 0 013 3 3 3 0 012 5 3 3 0 01-2 5 3 3 0 01-6 1" /><path d="M9 9h1M14 9h1M9 14h1M14 14h1" /></svg>
+)
 export const PaletteIcon = () => (
   <svg {...base} aria-hidden><path d="M12 3a9 9 0 100 18c1.1 0 1.5-.8 1.2-1.6-.4-.9.2-1.9 1.2-1.9H17a4 4 0 004-4c0-5-4-10.5-9-10.5z" /><circle cx="7.5" cy="11" r="1" /><circle cx="10" cy="7" r="1" /><circle cx="15" cy="7.5" r="1" /></svg>
 )
