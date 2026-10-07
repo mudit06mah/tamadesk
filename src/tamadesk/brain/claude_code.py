@@ -12,8 +12,20 @@ import shutil
 import subprocess
 
 from tamadesk.brain import BrainError
-from tamadesk.core import usage
+from tamadesk.core import db, usage
 from tamadesk.core.config import Settings
+
+
+def _check_daily(s: Settings) -> None:
+    conn = db.connect(s.db_path)
+    try:
+        spent = usage.today(conn)["usd"]
+    finally:
+        conn.close()
+    if spent >= s.assistant.daily_usd:
+        raise BrainError(
+            "budget", f"today's budget (${s.assistant.daily_usd:.2f}) is used up; raise it in Settings"
+        )
 
 
 class ClaudeCodeBrain:
@@ -38,7 +50,14 @@ class ClaudeCodeBrain:
     def ask(
         self, prompt: str, schema: dict, *, system: str = "", light: bool = False, kind: str = "brain"
     ) -> dict:
-        """`light` = short text (summaries, picking a template): runs on the cheapest model."""
+        """`light` = short text (summaries, picking a template): runs on the cheapest model.
+        Every call is capped (--max-budget-usd) and refused once today's budget is spent."""
+        _check_daily(self.s)
+        cap = (
+            min(self.s.brain.light_usd, self.s.assistant.max_usd_per_ask)
+            if light
+            else self.s.assistant.max_usd_per_ask
+        )
         cmd = [
             "claude", "-p", prompt,
             "--output-format", "json",
@@ -47,6 +66,7 @@ class ClaudeCodeBrain:
             "--tools", "",  # text in, JSON out: the brain never needs to touch files or the shell
             "--permission-mode", "dontAsk",
             "--no-session-persistence",
+            "--max-budget-usd", f"{cap:.2f}",
         ]  # fmt: skip
         if system:
             cmd += ["--append-system-prompt", system]

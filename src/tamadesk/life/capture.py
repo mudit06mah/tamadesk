@@ -27,6 +27,21 @@ TIMEY = re.compile(
     r"|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|mon|tue|wed|thu|fri|sat|sun)\w*\b",
     re.IGNORECASE,
 )
+# dateparser drops the clock time next to a relative day ("tomorrow 10am" -> tomorrow at the current time)
+CLOCK = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b|\b(\d{1,2}):(\d{2})\b", re.IGNORECASE)
+
+
+def _with_clock(phrase: str, when: datetime) -> datetime:
+    """Apply an explicit clock time in `phrase` to the day dateparser picked."""
+    if not (m := CLOCK.search(phrase)):
+        return when
+    if m.group(3):
+        hour, minute = int(m.group(1)) % 12 + (12 if m.group(3).lower() == "pm" else 0), int(m.group(2) or 0)
+    else:
+        hour, minute = int(m.group(4)), int(m.group(5))
+    if hour > 23 or minute > 59:
+        return when
+    return when.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
 @dataclass
@@ -61,6 +76,7 @@ def _find_time(text: str, now: datetime) -> tuple[str, datetime | None]:
         settings={"PREFER_DATES_FROM": "future", "RELATIVE_BASE": now, "RETURN_AS_TIMEZONE_AWARE": False},
     )
     for phrase, when in found or []:
+        when = _with_clock(phrase, when)
         if TIMEY.search(phrase) and when > now:
             rest = text.replace(phrase, " ", 1)
             rest = re.sub(r"\s+(?:at|on|in|by)\s*$", "", re.sub(r"\s+", " ", rest).strip())

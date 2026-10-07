@@ -78,7 +78,7 @@ def test_send_threads_the_follow_up_and_the_reply_is_matched(desk):
     )
     hit = inbox.match(conn, "me@gmail.com", reply)
     assert hit["kind"] == "interview" and hit["draft_id"] == first and "On Mon" not in hit["snippet"]
-    assert inbox.record(conn, reply["Message-ID"], hit, "2026-10-05 10:00:00")
+    assert inbox.record(conn, reply["Message-ID"], hit, datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
     assert conn.execute("SELECT stage FROM items WHERE id = ?", (job,)).fetchone()[0] == "interview"
     assert client.get("/api/next").json()[0]["action"] == "answer"
     assert client.get("/api/mail?status=sent").json()["items"][-1]["heard"] == "interview"

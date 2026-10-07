@@ -15,7 +15,7 @@ from tamadesk.core.config import Settings
 class BrainError(RuntimeError):
     def __init__(self, kind: str, message: str):
         super().__init__(f"[{kind}] {message}")
-        self.kind = kind  # unavailable | rate_limit | timeout | schema | failed
+        self.kind = kind  # unavailable | rate_limit | budget | timeout | schema | failed
 
 
 class Brain(Protocol):

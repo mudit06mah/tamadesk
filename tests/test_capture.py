@@ -70,3 +70,12 @@ def test_numbers_that_are_not_times():
         c = parse(text, NOW)
         assert c.due_at is None and c.kind == "todo", text
     assert parse("todo review PR 4521 in tokio", NOW).text == "review PR 4521 in tokio"
+
+
+def test_a_relative_day_keeps_its_clock_time():
+    local = lambda *a: datetime(*a).astimezone(UTC).replace(tzinfo=None)
+    c = parse("remind me to call the bank tomorrow 10am", NOW)
+    assert (c.kind, c.text, c.due_at) == ("reminder", "call the bank", local(2026, 10, 4, 10, 0))
+    assert parse("todo standup tomorrow at 9:30", NOW).due_at == local(2026, 10, 4, 9, 30)
+    assert parse("todo ship it today 6pm", NOW).due_at == local(2026, 10, 3, 18, 0)
+    assert parse("remind me to x at 12am tomorrow", NOW).due_at == local(2026, 10, 4, 0, 0)

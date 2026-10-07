@@ -51,7 +51,8 @@ def _brain_call(fn):
     try:
         return fn()
     except BrainError as e:
-        raise HTTPException(503 if e.kind in {"unavailable", "rate_limit"} else 502, str(e)) from e
+        code = 429 if e.kind == "budget" else 503 if e.kind in {"unavailable", "rate_limit"} else 502
+        raise HTTPException(code, str(e)) from e
 
 
 # ---------------------------------------------------------------- state
