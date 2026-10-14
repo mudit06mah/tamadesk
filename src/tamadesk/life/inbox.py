@@ -1,6 +1,8 @@
 """Check the user's Gmail (IMAP, the same app password used for sending) for mail that belongs to
 something they started: replies in their threads, bounces, and news from companies in their
 pipeline ("thanks for applying", interview invites, rejections). Everything else is never stored.
+The one exception is a calendar invite addressed to the user: its event fields (not the mail) go to
+the calendar (`life/calendar.py`).
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from email.utils import parseaddr, parsedate_to_datetime
 
 from tamadesk.core import db
 from tamadesk.core.config import Settings
-from tamadesk.life import mail, pipeline
+from tamadesk.life import actions, mail, pipeline
 
 KINDS = [  # first match wins; plain keyword rules, free and explainable
     ("rejected", re.compile(r"unfortunately|not (?:be )?moving forward|decided to (?:move|go) (?:forward )?with other|"
@@ -31,6 +33,7 @@ ATS_SENDERS = re.compile(
 
 
 def classify(text: str, default: str = "update") -> str:
+    """What kind of mail this is (reply, interview, rejected, bounce, ...) from plain patterns."""
     return next((k for k, rx in KINDS if rx.search(text)), default)
 
 
@@ -122,6 +125,7 @@ STAGE_FOR = {"reply": "replied", "applied": "applied", "interview": "interview",
 
 
 def record(conn: sqlite3.Connection, message_id: str, m: dict, received: str) -> bool:
+    """Keep one matched mail: moves its item's stage and logs it. False if already seen."""
     with db.transaction(conn):
         cur = conn.execute(
             """INSERT INTO inbox (message_id, draft_id, item_id, kind, from_addr, from_name, subject, snippet, received_at)
@@ -142,15 +146,36 @@ def record(conn: sqlite3.Connection, message_id: str, m: dict, received: str) ->
     return True
 
 
+CAPTURE = re.compile(r"^\s*(td|todo|log|tamadesk)\s*:\s*(.+)$", re.IGNORECASE | re.DOTALL)
+
+
+def self_capture(s: Settings, msg) -> str | None:
+    """A mail from yourself whose subject starts with "td:" (or "todo:", "log:") is a quick capture:
+    the easiest way to add something from a phone. Returns the text to capture, or None."""
+    from tamadesk.life import capture
+
+    _, sender = parseaddr(_h(msg, "From"))
+    m = CAPTURE.match(_h(msg, "Subject"))
+    if not m or not s.mail.address or sender.lower() != s.mail.address.lower():
+        return None
+    text = m.group(2).strip().splitlines()[0][:300]
+    if m.group(1).lower() == "log":
+        return f"log {text}"
+    # "td: buy milk" is a todo; "td: remind me to … at 6pm" or "td: meeting … at 3" keep their own meaning
+    return text if capture.parse(text).kind not in ("log",) else f"todo {text}"
+
+
 def check(s: Settings, conn: sqlite3.Connection, *, connect=imaplib.IMAP4_SSL) -> list[dict]:
     """Look at recent mail once. Returns what was new and matched (for notifications)."""
+    from tamadesk.life import calendar  # it uses this module's pipeline matching
+
     if not mail.ready(s):
         return []
     since = db.get_profile(conn, "inbox_since") or (datetime.now(UTC) - timedelta(days=14)).strftime(
         "%d-%b-%Y"
     )
     found = []
-    with connect("imap.gmail.com", 993) as imap:
+    with connect(mail.hosts(s)[0], 993) as imap:
         imap.login(s.mail.address, mail.get_secret(s, "gmail_app_password").replace(" ", ""))
         imap.select("INBOX", readonly=True)
         _, ids = imap.search(None, "SINCE", since)
@@ -161,7 +186,13 @@ def check(s: Settings, conn: sqlite3.Connection, *, connect=imaplib.IMAP4_SSL) -
                 continue
             msg = email.message_from_bytes(raw)
             mid = _h(msg, "Message-ID").strip()
+            calendar.from_mail(s, conn, msg)  # invites: event fields only, re-reading one changes nothing
             if not mid or conn.execute("SELECT 1 FROM inbox WHERE message_id = ?", (mid,)).fetchone():
+                continue
+            if (text := self_capture(s, msg)) is not None:  # "td: …" mailed to yourself, e.g. from your phone
+                actions.capture_text(conn, text, source="mail")
+                conn.execute("INSERT INTO inbox (message_id, kind, from_addr, subject, status) VALUES (?,?,?,?,?)",
+                             (mid, "capture", s.mail.address, _h(msg, "Subject")[:200], "done"))  # fmt: skip
                 continue
             if (m := match(conn, s.mail.address, msg)) is None:
                 continue

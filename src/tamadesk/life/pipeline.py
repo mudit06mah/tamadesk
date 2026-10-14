@@ -11,8 +11,6 @@ import sqlite3
 from tamadesk.core import db
 
 ORDER = ["emailed", "applied", "replied", "interview", "rejected", "done"]
-LABEL = {"emailed": "emailed", "applied": "applied", "replied": "replied!", "interview": "interview",
-         "rejected": "closed", "done": "done"}  # fmt: skip
 
 
 def set_stage(

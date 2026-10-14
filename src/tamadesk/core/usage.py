@@ -12,11 +12,13 @@ from tamadesk.core.config import Settings
 
 
 def tokens_of(raw: dict) -> int:
+    """Tokens a `claude -p` result used (input, output, and cache writes)."""
     u = raw.get("usage") or {}
     return sum(int(u.get(k) or 0) for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens"))
 
 
 def record(s: Settings, kind: str, raw: dict) -> None:
+    """Log one Claude call's cost and tokens, for Settings and the daily budget."""
     conn = db.connect(s.db_path)
     try:
         conn.execute("INSERT INTO usage (kind, cost_usd, tokens) VALUES (?, ?, ?)",
@@ -26,6 +28,7 @@ def record(s: Settings, kind: str, raw: dict) -> None:
 
 
 def today(conn: sqlite3.Connection) -> dict:
+    """Today's spend so far: dollars (API-equivalent), tokens and runs."""
     from tamadesk.api.routes import day_start_utc
 
     r = conn.execute("SELECT coalesce(sum(cost_usd), 0), coalesce(sum(tokens), 0), count(*) FROM usage WHERE at >= ?",

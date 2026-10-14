@@ -13,12 +13,16 @@ from tamadesk.core.config import Settings
 
 
 class BrainError(RuntimeError):
+    """A model call that failed, with a `kind` the UI can explain (budget, rate_limit, timeout, ...)."""
+
     def __init__(self, kind: str, message: str):
         super().__init__(f"[{kind}] {message}")
         self.kind = kind  # unavailable | rate_limit | budget | timeout | schema | failed
 
 
 class Brain(Protocol):
+    """Anything that answers `ask(prompt, schema) -> dict` with JSON matching the schema."""
+
     name: str
 
     def ask(
@@ -29,6 +33,7 @@ class Brain(Protocol):
 
 
 def get_brain(s: Settings) -> Brain:
+    """The brain the user picked in Settings: their Claude Code login (default) or a local Ollama model."""
     if s.brain.kind == "ollama":
         from tamadesk.brain.ollama import OllamaBrain
 

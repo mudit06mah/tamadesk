@@ -3,18 +3,17 @@
 // "log …" are handled instantly on the desk itself and cost nothing.
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
-import { type ChatMsg, type Step } from './api'
+import { api, type ChatMsg, type Step } from './api'
 import { FREE, useAsk } from './AskStore'
-import { Companion, useCompanion, type Mood } from './Companion'
+import { BuddyRing } from './Buddy'
+import { useCompanion, type Mood } from './Companion'
 import { useFx } from './fx/Fx'
-import { FlameIcon } from './icons'
 import { Markdown } from './Markdown'
-import { Bar } from './ui'
 
 const POKES = ['hehe', 'that tickles!', "I'm awake, I'm awake", 'one thing at a time :)', '*happy wiggle*', 'boop']
 
 /** What each tool call looks like to a person. */
-export function stepLabel(st: Step): string {
+function stepLabel(st: Step): string {
   const i = st.input as Record<string, string & Record<string, string>>
   const name = st.name.replace(/^mcp__\w+?__/, '')
   const q = i.params?.query ?? i.params?.url ?? i.query ?? ''
@@ -50,6 +49,23 @@ function examples(interests: string): string[] {
   ]
 }
 
+// what a free line becomes, for the hint under the box
+const KINDS: [RegExp, string][] = [
+  [/^\s*(done|finished|✓)\b/i, 'tick it off'],
+  [/^\s*(remove|delete|drop|cancel|stop)\s/i, 'remove it'],
+  [/^\s*(move|push|snooze|postpone)\b/i, 'new deadline'],
+  [/^\s*waiting\b/i, 'waiting on'],
+  [/^\s*(meeting|mtg|call|meet)\b/i, 'meeting'],
+  [/^\s*focus\b/i, 'focus session'],
+  [/^\s*remind\b/i, 'reminder'],
+  [/^\s*(log\b|>)/i, 'log'],
+  [/^\s*(todo\b|t:|\[|-\s*\[)/i, 'todo'],
+]
+function freeLabel(t: string): string {
+  const kind = KINDS.find(([rx]) => rx.test(t))?.[1] ?? "what's next"
+  return /\bevery\s|\b(daily|weekly|monthly|weekdays)\b/i.test(t) && kind !== "what's next" ? `${kind} · repeats` : kind
+}
+
 export function AskPanel({
   greeting,
   mood,
@@ -62,7 +78,7 @@ export function AskPanel({
   mood: Mood
   interests: string
   level: { level: number; xp: number; into: number; need: number }
-  stats: { done: number; goal: number; streak: number }
+  stats: { done: number; goal: number; streak: number; freezes?: number }
   cheer?: number
 }) {
   const fx = useFx()
@@ -95,43 +111,31 @@ export function AskPanel({
 
   const lastStep = live?.steps.at(-1)
   const say = poke ?? (running ? (lastStep ? `${stepLabel(lastStep)}…` : 'On it…') : msgs.length ? 'Anything else?' : greeting)
-  const free = FREE.test(text)
+  // shortcuts you haven't tried yet lead the example chips; each makes room once you've used it
+  const [tips, setTips] = useState<string[]>([])
+  useEffect(() => {
+    api.tips().then(setTips, () => setTips([]))
+  }, [doneTick, msgs.length])
+  const free = FREE.test(text) ? freeLabel(text) : null
   const spent = usage ? usage.usd / usage.daily_usd : 0
 
   return (
     <section className="ask">
       <div className="ask-head">
         <div className="ask-buddy">
-          <motion.div
-            animate={running ? { y: [0, -3, 0] } : text ? { rotate: -7, y: -2 } : { rotate: 0, y: 0 }}
-            transition={running ? { duration: 0.7, repeat: Infinity } : { type: 'spring', stiffness: 260, damping: 14 }}
-            title={text && !running ? 'listening…' : undefined}
-          >
-          <Companion
+          <BuddyRing
             mood={running ? 'happy' : poke ? 'happy' : mood}
-            size={104}
             cheer={cheer}
+            level={level}
+            stats={stats}
+            lean={!!text && !running}
+            working={running}
             onPoke={() => {
               fx.sound('poke')
               setPoke(POKES[Math.floor(Math.random() * POKES.length)])
               setTimeout(() => setPoke(null), 1800)
             }}
           />
-          </motion.div>
-          <div className="lv-mini" title={`${level.xp} XP · ${level.need - level.into} to next level`}>
-            <b>LV {level.level}</b>
-            <Bar value={level.into / Math.max(1, level.need)} label="XP to next level" />
-          </div>
-          <div className="ask-stats">
-            <span className={`pill ${stats.done >= stats.goal ? 'hit' : ''}`} title="todos done today / daily goal">
-              ✓ {stats.done}/{stats.goal}
-            </span>
-            {stats.streak > 0 && (
-              <span className="pill" title="days in a row">
-                <FlameIcon /> {stats.streak}d
-              </span>
-            )}
-          </div>
         </div>
         <div className="ask-main">
           {/* the bubble stays put and resizes; only its words crossfade (no jumpy re-entrance per step) */}
@@ -169,7 +173,7 @@ export function AskPanel({
             />
             <div className="ask-row">
               <span className={`ask-hint ${free ? 'free' : ''}`}>
-                {free ? 'instant · free' : running ? `${buddy.name} is working…` : `↵ ask ${buddy.name}`}
+                {free ? `instant · free · ${free}` : running ? `${buddy.name} is working…` : `↵ ask ${buddy.name}`}
               </span>
               {usage && (
                 <span className="ask-budget" title={`${usage.model}, ${usage.effort} effort · max $${usage.max_usd_per_ask.toFixed(2)} per ask`}>
@@ -190,7 +194,7 @@ export function AskPanel({
           </form>
           {!msgs.length && !running && (
             <div className="ask-examples">
-              {examples(interests).map((ex) => (
+              {[...tips, ...examples(interests)].slice(0, 4).map((ex) => (
                 <motion.button key={ex} className="chip" whileTap={{ scale: 0.94 }} onClick={() => (setText(ex), inputRef.current?.focus())}>
                   {ex}
                 </motion.button>

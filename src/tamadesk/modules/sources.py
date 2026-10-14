@@ -12,18 +12,24 @@ import json
 import re
 import shutil
 import subprocess
+import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from html import unescape
+from urllib.parse import parse_qs, urlparse
 
 from tamadesk.core.net import get_json, get_text
+from tamadesk.modules import youtube
 
 
 @dataclass
 class Item:
+    """One thing a source found. `ext_id` dedupes it within a tab; `data` carries what its next action needs."""
+
     ext_id: str
     title: str
     url: str = ""
@@ -37,6 +43,8 @@ SOURCES: dict[str, Callable[..., list[Item]]] = {}
 
 
 def source(name: str):
+    """Register a fetch function under a source type name (the `type` in a tab's YAML)."""
+
     def reg(fn):
         SOURCES[name] = fn
         return fn
@@ -45,11 +53,13 @@ def source(name: str):
 
 
 def clean(s: str, n: int = 600) -> str:
+    """Plain text from HTML or messy text, cut to `n` characters."""
     s = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", unescape(s or ""))).strip()
     return s if len(s) <= n else s[: n - 1].rsplit(" ", 1)[0] + "…"
 
 
 def uid(*parts: str) -> str:
+    """A short stable id from the given parts."""
     return hashlib.sha1("|".join(parts).encode()).hexdigest()[:16]
 
 
@@ -66,6 +76,16 @@ def _text(e: ET.Element, tag: str) -> str:
     return (el.text or "") if el is not None else ""
 
 
+def _iso(when: str) -> str:
+    """A feed's date as ISO 8601: Atom already is; RSS's 'Sun, 11 Oct 2026 00:57:36 GMT' is converted."""
+    if not when or when[:4].isdigit():
+        return when
+    try:
+        return parsedate_to_datetime(when).isoformat()
+    except (TypeError, ValueError):
+        return ""
+
+
 def parse_feed(xml: str, limit: int = 30) -> list[Item]:
     """RSS 2.0 or Atom -> Items. Shared by `rss` and `arxiv` (arXiv's API speaks Atom)."""
     root = ET.fromstring(xml)
@@ -77,22 +97,89 @@ def parse_feed(xml: str, limit: int = 30) -> list[Item]:
             link = el.get("href", "")
         authors = [clean(a.findtext(f"{ATOM}name") or "") for a in e.findall(f"{ATOM}author")]
         title = clean(t("title"), 200)
+        body = t("description") or t("summary") or t("content") or e.findtext(f".//{MEDIA}description") or ""
+        data = {}
+        if youtube.VIDEO.search(link):  # a channel feed: say what the video is, not the channel's promo
+            body = youtube.blurb(body)
+            stats = e.find(f".//{MEDIA}statistics")
+            data = {"views": int(stats.get("views") or 0)} if stats is not None else {}
+            if data.get("views"):  # "3Blue1Brown · 6.3M views"
+                authors = [" · ".join([*authors[:1], f"{youtube.views_text(data['views'])} views"])]
         out.append(Item(
             ext_id=uid(t("guid") or t("id") or link or title), title=title, url=link.strip(),
             subtitle=", ".join(authors[:4]) + (" et al." if len(authors) > 4 else "") or clean(t("author"), 80),
-            body=clean(t("description") or t("summary") or t("content") or e.findtext(f".//{MEDIA}description") or ""),
-            published=(t("pubDate") or t("published") or t("updated")).strip(),
+            body=clean(body), published=_iso((t("pubDate") or t("published") or t("updated")).strip()), data=data,
         ))  # fmt: skip
+    return out
+
+
+def _video(v: dict, **data) -> Item:
+    return Item(ext_id=f"yt{v['id']}", title=clean(v["title"], 200), url=f"https://www.youtube.com/watch?v={v['id']}",
+                subtitle=youtube.subtitle(v), body=youtube.blurb(v["description"]),
+                data={"thumb": youtube.thumb(v["id"]), "duration": v["duration"], "views": v["views"]} | data)  # fmt: skip
+
+
+@source("news")
+def news(query: str, limit: int = 30, market: str = "") -> list[Item]:
+    """News articles about a topic from Bing News' public RSS (no key, no login), linking to the
+    publisher's own page. Several words narrow it ("Starlink India"); quotes keep a phrase together.
+    market: e.g. en-in for news from India, '' for the default."""
+    params = {"q": query, "format": "rss"} | ({"mkt": market} if market else {})
+    root = ET.fromstring(get_text("https://www.bing.com/news/search", params=params))
+    out = []
+    for e in root.findall(".//item")[:limit]:
+        link = e.findtext("link") or ""
+        original = parse_qs(urlparse(link).query).get("url", [link])[0]  # Bing's click-through -> the article
+        src = next((c.text for c in e if c.tag.endswith("}Source")), "") or ""
+        img = next((c.text for c in e if c.tag.endswith("}Image")), "") or ""
+        out.append(Item(
+            ext_id=uid(original), title=clean(e.findtext("title") or "", 200), url=original,
+            subtitle=clean(src.removesuffix(" on MSN"), 80), body=clean(e.findtext("description") or ""),
+            published=_iso(e.findtext("pubDate") or ""), data={"thumb": f"{img}&w=320&h=180&c=14"} if img else {},
+        ))  # fmt: skip
+    return out
+
+
+@source("youtube")
+def youtube_search(query: str, limit: int = 10) -> list[Item]:
+    """YouTube search (yt-dlp, no login): videos with channel, length, views and a clean description.
+    Shorts are left out."""
+    return [_video(v) for v in youtube.search(query, limit) if not 0 < v["duration"] < 90]
+
+
+@source("roadmap")
+def roadmap(subject: str, topics: str, per_topic: int = 3) -> list[Item]:
+    """A learning path: for each topic, in order, the best few videos (on-topic, explainer length, well
+    watched). topics: one per line or comma separated, in the order to learn them."""
+    names = [x.strip(" -•*\t0123456789.)") for x in re.split(r"\n|,|;", topics)]
+    out = []
+    for step, topic in enumerate((x for x in names if x), start=1):
+        found = youtube.search(
+            f"{topic} {subject}".strip() if subject.lower() not in topic.lower() else topic, 12
+        )
+        for v in youtube.pick(found, topic, per_topic):
+            if not youtube.blurb(v["description"]):  # search gives a snippet; the page has the rest
+                try:
+                    v = v | {
+                        "description": (
+                            youtube.details(f"https://www.youtube.com/watch?v={v['id']}") or {}
+                        ).get("description", "")
+                    }
+                except (RuntimeError, OSError, ValueError, subprocess.TimeoutExpired):
+                    pass
+            out.append(_video(v, step=step, topic=topic))
     return out
 
 
 @source("rss")
 def rss(url: str, limit: int = 30) -> list[Item]:
+    """Any RSS or Atom feed."""
     return parse_feed(get_text(url), limit)
 
 
 @source("arxiv")
 def arxiv(query: str, limit: int = 20) -> list[Item]:
+    """Newest arXiv papers on comma-separated topics."""
     topics = [w.strip() for w in query.split(",") if w.strip()]
     q = " OR ".join(f'all:"{w}"' if " " in w else f"all:{w}" for w in topics)
     xml = get_text("https://export.arxiv.org/api/query", params={
@@ -104,18 +191,30 @@ def arxiv(query: str, limit: int = 20) -> list[Item]:
 # ---------------------------------------------------------------- JSON APIs
 
 
+# a topic search means these words, in the story itself: no typo matches ("Starling"), no hits on a URL
+EXACT = {"typoTolerance": "false", "restrictSearchableAttributes": "title,story_text"}
+
+
 @source("hn")
 def hn(query: str = "", min_points: int = 30, limit: int = 30, tags: str = "story") -> list[Item]:
     """Hacker News (Algolia API). No query = the front page. tags: story | show_hn | ask_hn.
+    Comma-separated topics are searched one by one; every word of a topic must be in the story
+    ("Starlink India" never brings back any story that just says "India").
     Use min_points 0 to catch brand-new posts (e.g. watching for your own launch)."""
     params = {"tags": tags, "hitsPerPage": limit, "numericFilters": f"points>={min_points}"}
-    url = "https://hn.algolia.com/api/v1/search_by_date" if query else "https://hn.algolia.com/api/v1/search"
-    if query:
-        # comma-separated topics: any of them may match
-        params |= {"query": query.replace(",", " "), "optionalWords": query.replace(",", " ")}
+    if not query:
+        hits = get_json("https://hn.algolia.com/api/v1/search", params=params | {"tags": "front_page"})[
+            "hits"
+        ]
     else:
-        params["tags"] = "front_page"
-    hits = get_json(url, params=params)["hits"]
+        hits, ids = [], set()
+        for topic in (x.strip() for x in query.split(",") if x.strip()):
+            for h in get_json(
+                "https://hn.algolia.com/api/v1/search_by_date", params=params | {"query": topic, **EXACT}
+            )["hits"]:
+                if h["objectID"] not in ids:
+                    ids.add(h["objectID"])
+                    hits.append(h)
     return [Item(
         ext_id=f"hn{h['objectID']}", title=clean(h.get("title") or "", 200),
         url=h.get("url") or f"https://news.ycombinator.com/item?id={h['objectID']}",
@@ -216,6 +315,7 @@ def repo_info(repo: str) -> dict:
 
 
 def agent_reach_ready() -> bool:
+    """Is agent-reach's mcporter installed (for Exa search)?"""
     return shutil.which("mcporter") is not None
 
 
@@ -233,7 +333,7 @@ def exa(query: str, limit: int = 10, objective: str = "", exclude: str = "") -> 
     """Exa semantic web search through agent-reach's mcporter config (free, no key, no login).
     Good for things without a feed: companies, people's blogs, niche news. Login-walled sites and job
     aggregators are always dropped; `exclude` adds more hosts (comma separated)."""
-    items = _exa(query, limit + 5, objective)
+    items = _exa_retry(query, limit + 5, objective)
     blocked = WALLED + tuple(h.strip() for h in exclude.split(",") if h.strip())
     items = [i for i in items if not any(b in _host(i.url) for b in blocked)][:limit]
     for i in items:  # a careers page or ATS posting is itself the place to apply
@@ -260,7 +360,18 @@ def _exa(query: str, limit: int, objective: str) -> list[Item]:
     return parse_exa(text)
 
 
+def _exa_retry(query: str, limit: int, objective: str, tries: int = 3) -> list[Item]:
+    """The free Exa endpoint sometimes answers a good query with nothing (about 1 in 8, measured);
+    an empty answer is retried, so a refresh never silently comes back empty."""
+    for attempt in range(tries):
+        if items := _exa(query, limit, objective):
+            return items
+        time.sleep(1.5 * (attempt + 1))
+    return []
+
+
 def parse_exa(text: str) -> list[Item]:
+    """Items from Exa's text answer (Title/URL/Text blocks)."""
     out = []
     for block in re.split(r"\n---\n", text):
         title, url = (
@@ -340,41 +451,60 @@ def hn_jobs(query: str, limit: int = 25, remote: bool = False) -> list[Item]:
     return [i for i in jobs if not remote or "remote" in f"{i.title} {i.body}".lower()]
 
 
-ATS = {
-    "ashby": "https://api.ashbyhq.com/posting-api/job-board/{slug}",
-    "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
-    "lever": "https://api.lever.co/v0/postings/{slug}?mode=json",
-}
+def _ms(v) -> str:
+    return datetime.fromtimestamp(v / 1000, UTC).isoformat() if isinstance(v, (int, float)) else str(v or "")
 
 
-def _board(slug: str) -> list[dict]:
-    """A company's open roles from whichever public ATS board answers: [{title, url, location}]."""
-    for ats, url in ATS.items():
+# each company job system: its public list URL, and how to read one posting -> {title, url, location, posted}
+BOARDS: dict[str, tuple[str, Callable[[dict, str], dict]]] = {
+    "ashby": ("https://api.ashbyhq.com/posting-api/job-board/{slug}", lambda j, s: {
+        "title": j["title"], "url": j.get("applyUrl") or j.get("jobUrl"), "location": j.get("location", ""),
+        "posted": j.get("publishedAt", ""), "remote": j.get("isRemote")}),
+    "greenhouse": ("https://boards-api.greenhouse.io/v1/boards/{slug}/jobs", lambda j, s: {
+        "title": j["title"], "url": j["absolute_url"], "location": (j.get("location") or {}).get("name", ""),
+        "posted": j.get("first_published") or j.get("updated_at", "")}),
+    "lever": ("https://api.lever.co/v0/postings/{slug}?mode=json", lambda j, s: {
+        "title": j["text"], "url": j.get("hostedUrl") or j.get("applyUrl"),
+        "location": (j.get("categories") or {}).get("location", ""), "posted": _ms(j.get("createdAt"))}),
+    "workable": ("https://apply.workable.com/api/v1/widget/accounts/{slug}", lambda j, s: {
+        "title": j["title"], "url": j.get("url") or j.get("application_url") or f"https://apply.workable.com/{s}/j/{j.get('shortcode')}/",
+        "location": ", ".join(x for x in (j.get("city"), j.get("country")) if x), "posted": j.get("created_at", ""),
+        "remote": j.get("telecommuting")}),
+    "recruitee": ("https://{slug}.recruitee.com/api/offers/", lambda j, s: {
+        "title": j["title"], "url": j.get("careers_url") or j.get("careers_apply_url"),
+        "location": ", ".join(x for x in (j.get("city"), j.get("country")) if x), "posted": j.get("created_at", ""),
+        "remote": j.get("remote")}),
+    "smartrecruiters": ("https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100", lambda j, s: {
+        "title": j["name"], "url": f"https://jobs.smartrecruiters.com/{s}/{j['id']}",
+        "location": ", ".join(x for x in ((j.get("location") or {}).get("city"), (j.get("location") or {}).get("country")) if x),
+        "posted": j.get("releasedDate", ""), "remote": (j.get("location") or {}).get("remote")}),
+}  # fmt: skip
+GUESSABLE = (
+    "ashby",
+    "greenhouse",
+    "lever",
+    "workable",
+    "recruitee",
+)  # SmartRecruiters ids are exact: learned only
+
+
+def _board(slug: str, ats: str | None = None) -> list[dict]:
+    """A company's open roles from its job system: [{title, url, location, posted}]. Without `ats`,
+    the guessable systems are tried in turn (a name like "linear" usually works)."""
+    for name in [ats] if ats else GUESSABLE:
+        url, read = BOARDS[name]
         try:
             data = get_json(url.format(slug=slug), timeout=12)
-        except Exception:  # noqa: BLE001, S112 - not on this ATS
+        except Exception:  # noqa: BLE001, S112 - not on this system
             continue
-        rows = data.get("jobs", []) if isinstance(data, dict) else data
-        if ats == "ashby":
-            return [
-                {
-                    "title": j["title"],
-                    "url": j.get("applyUrl") or j["jobUrl"],
-                    "location": j.get("location", ""),
-                }
-                for j in rows
-            ]
-        if ats == "greenhouse":
-            return [
-                {
-                    "title": j["title"],
-                    "url": j["absolute_url"],
-                    "location": (j.get("location") or {}).get("name", ""),
-                }
-                for j in rows
-            ]
-        return [{"title": j["text"], "url": j.get("applyUrl") or j["hostedUrl"],
-                 "location": (j.get("categories") or {}).get("location", "")} for j in rows]  # fmt: skip
+        rows = (
+            data.get("jobs") or data.get("offers") or data.get("content") or []
+            if isinstance(data, dict)
+            else data
+        )
+        if not rows and not ats:
+            continue
+        return [r | {"ats": name} for j in rows if (r := read(j, slug)).get("url")]
     return []
 
 
@@ -384,15 +514,90 @@ def company_jobs(companies: str, query: str = "", limit: int = 30) -> list[Item]
     link. companies: board names, comma separated (usually the company name, e.g. 'linear, vercel')."""
     words = [w for w in re.findall(r"\w+", query.lower()) if len(w) > 2]
     out: list[Item] = []
-    for name in [c.strip() for c in companies.split(",") if c.strip()][:15]:
-        slug = re.sub(r"[^a-z0-9-]", "", name.lower().replace(" ", ""))
-        for j in _board(slug):
+    for name in [c.strip() for c in companies.split(",") if c.strip()][:40]:
+        ats, _, slug = name.rpartition(":")  # "greenhouse:acme" (learned) or just "acme" (typed)
+        if ats not in BOARDS:
+            ats, slug = "", re.sub(r"[^a-z0-9-]", "", name.lower().replace(" ", ""))
+        label = slug if ats else name
+        for j in _board(slug, ats or None):
             if words and not any(w in j["title"].lower() for w in words):
                 continue
-            out.append(Item(ext_id=uid(j["url"]), title=f"{j['title']} at {name}", url=j["url"],
-                            subtitle=f"{name} · {j['location'] or 'location n/a'}",
-                            data={"apply_url": j["url"], "company": name}))  # fmt: skip
+            out.append(Item(ext_id=uid(j["url"]), title=f"{j['title']} at {label}", url=j["url"],
+                            subtitle=f"{label} · {j['location'] or 'location n/a'}", published=j.get("posted") or "",
+                            data={"apply_url": j["url"], "company": label, "board": f"{j['ats']}:{slug}",
+                                  "live": "open", "remote": j.get("remote")}))  # fmt: skip
     return out[:limit]
+
+
+@source("job_search")
+def job_search(roles: str, level: str = "", location: str = "", limit: int = 30) -> list[Item]:
+    """Job postings found by web search, several narrow queries (one per role), kept only when they're
+    the original posting on the company's careers page or job system. Each result's job system is
+    remembered, so the tab can watch that company's whole board. roles: comma separated."""
+    from tamadesk.modules import fit as fitting
+    from tamadesk.modules import postings
+
+    f = fitting.Fit(level=level or None, roles=roles)
+    out: list[Item] = []
+    for q in postings.queries(f, f.roles, location):
+        for it in _exa_retry(q, 10, postings.OBJECTIVE):
+            if not postings.original(it.url):
+                continue  # boards, aggregators and career centres: never the source
+            it.data["apply_url"] = it.url
+            if board := postings.board_of(it.url):
+                it.data["board"] = f"{board[0]}:{board[1]}"
+                it.data.setdefault("company", board[1])
+            elif "gh_jid=" in it.url:  # a careers page powered by Greenhouse: learn its board if it answers
+                slug = postings.host(it.url).split(".")[-2]
+                if _board(slug, "greenhouse"):
+                    it.data["board"] = f"greenhouse:{slug}"
+                    it.data.setdefault("company", slug)
+            out.append(it)
+    seen: set[str] = set()
+    return [i for i in out if not (i.url in seen or seen.add(i.url))][:limit]
+
+
+CFP_TOPICS = {"general", "accessibility", "android", "api", "blockchain", "cpp", "css", "data", "devops", "dotnet",
+              "elixir", "golang", "graphql", "ios", "iot", "java", "javascript", "kotlin", "leadership",
+              "networking", "opensource", "performance", "php", "product", "python", "ruby", "rust", "scala",
+              "security", "sre", "tech-comm", "testing", "typescript", "ux"}  # fmt: skip
+
+
+@source("cfp")
+def cfp(topics: str = "general", limit: int = 40) -> list[Item]:
+    """Conferences whose call for papers is still open, from the community-kept conference-data
+    repo on GitHub (free, no login). topics: comma separated, e.g. 'javascript, ux, devops'.
+    Each item carries its CFP deadline, so '+ todo' makes a todo that's due then."""
+    today = datetime.now(UTC).date().isoformat()
+    wanted = [t.strip().lower() for t in topics.split(",") if t.strip().lower() in CFP_TOPICS] or ["general"]
+    out: list[Item] = []
+    for year in (datetime.now(UTC).year, datetime.now(UTC).year + 1):
+        for topic in wanted[:6]:
+            try:
+                rows = get_json(f"https://raw.githubusercontent.com/tech-conferences/conference-data/main/conferences/"
+                                f"{year}/{topic}.json", timeout=15)  # fmt: skip
+            except Exception:  # noqa: BLE001, S112 - next year's file may not exist yet
+                continue
+            for c in rows:
+                closes = c.get("cfpEndDate") or ""
+                if closes < today or not (c.get("cfpUrl") or c.get("url")):
+                    continue
+                where = (
+                    "online"
+                    if c.get("online")
+                    else ", ".join(x for x in (c.get("city"), c.get("country")) if x)
+                )
+                out.append(Item(ext_id=uid(c.get("url", ""), closes), title=f"{c['name']}: CFP closes {closes}",
+                                url=c.get("cfpUrl") or c["url"], subtitle=f"{where} · {c.get('startDate', '')}",
+                                body=f"{c['name']} ({topic}) runs {c.get('startDate', '')} to {c.get('endDate', '')}.",
+                                published=closes, data={"deadline": closes, "event_url": c.get("url", "")}))  # fmt: skip
+    seen: set[str] = set()
+    unique = [
+        i
+        for i in sorted(out, key=lambda i: i.data["deadline"])
+        if not (i.ext_id in seen or seen.add(i.ext_id))
+    ]
+    return unique[:limit]
 
 
 @source("agent")
@@ -452,5 +657,6 @@ def read_page(url: str, limit: int = 6000) -> str:
 
 
 def fetch(spec: dict) -> list[Item]:
+    """Run one source from its spec ({type, ...params})."""
     params = {k: v for k, v in spec.items() if k != "type"}
     return SOURCES[spec["type"]](**params)

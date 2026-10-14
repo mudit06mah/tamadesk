@@ -2,6 +2,11 @@
 
 No API key is ever used: we never pass --bare, and ANTHROPIC_API_KEY is stripped from the child
 environment so the CLI can't silently switch to API billing.
+
+Every call runs lean (`LEAN`): our own short system prompt instead of Claude Code's coding-agent one,
+and none of the user's own Claude Code setup (claude.ai connectors such as Gmail or Drive, skills,
+hooks, settings). Measured on a small JSON task: 17,000 input tokens down to about 450. It only
+changes these child processes; the user's own `claude` sessions are untouched.
 """
 
 from __future__ import annotations
@@ -14,6 +19,10 @@ import subprocess
 from tamadesk.brain import BrainError
 from tamadesk.core import db, usage
 from tamadesk.core.config import Settings
+
+# no MCP servers but the ones we pass, no skills, no user/project settings (so no hooks)
+LEAN = ["--strict-mcp-config", "--disable-slash-commands", "--setting-sources", ""]
+SYSTEM = "You are a careful helper inside a personal desk app. Answer only with JSON that matches the schema."
 
 
 def _check_daily(s: Settings) -> None:
@@ -29,6 +38,8 @@ def _check_daily(s: Settings) -> None:
 
 
 class ClaudeCodeBrain:
+    """The user's own `claude` CLI as a brain: lean, capped, budget-checked, usage recorded."""
+
     name = "Claude Code"
 
     def __init__(self, s: Settings):
@@ -67,9 +78,9 @@ class ClaudeCodeBrain:
             "--permission-mode", "dontAsk",
             "--no-session-persistence",
             "--max-budget-usd", f"{cap:.2f}",
+            "--system-prompt", f"{SYSTEM}\n\n{system}".strip(),
+            "--mcp-config", '{"mcpServers": {}}', *LEAN,
         ]  # fmt: skip
-        if system:
-            cmd += ["--append-system-prompt", system]
         env = {k: v for k, v in os.environ.items() if k not in {"ANTHROPIC_API_KEY", "CLAUDE_CODE_SIMPLE"}}
         try:
             proc = subprocess.run(

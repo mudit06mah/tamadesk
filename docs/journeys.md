@@ -24,7 +24,8 @@ find  ->  keep  ->  act  ->  wait  ->  follow up / respond  ->  close  ->  remem
 
 > "I want a remote UI/UX role at a company I'd actually like."
 
-1. **Find:** the Job hunt tab pulls HN "Who is hiring?" posts, companies' own ATS boards, and
+1. **Find:** the Job hunt tab only keeps what fits: the level you said in New Game (internship,
+   junior, senior…) and your roles. A senior role never reaches an internship search. It pulls HN "Who is hiring?" posts, companies' own ATS boards, and
    careers pages from web search. Each card has **apply ↗** and the hiring email the company
    published.
 2. **Keep:** ♥ the good ones. The stage becomes `kept`.
@@ -90,15 +91,29 @@ The same pipeline with different sources and inputs:
 
 ## 6. The daily rhythm
 
-- **Morning, on Today:**
-  - **Up next:** replies to answer, follow-ups due, drafts waiting, interviews to schedule,
-    jobs kept but not acted on.
-  - **Todos and alarms.**
-  - **Bolt's line:** a short line pointing at the single most important item.
-- **During the day:** the Ask box handles anything ad hoc. The free shortcuts (`todo`,
-  `remind me`, `log`) cost nothing.
+- **Morning, on Today:** one list, in this order (`life/today.py`, and Bolt's `my_day` tool).
+  - **Needs you:** replies to answer, follow-ups due, each draft waiting, interviews to schedule,
+    jobs kept but not acted on, overdue todos. Each carries its **only you** lines: the
+    things only you can do well ("reply today, they asked a question", "check this guessed
+    address", "say why this company").
+  - **The timeline:** meetings (with a join link and a ring before each), reminders and todos due,
+    with a "now" line. What you already did folds away under "earlier", including ticked
+    suggestions.
+  - **Anytime:** undated todos and ones due later. A deadline shows as a countdown that heats up
+    as it gets close, and the companion gets louder in your chosen nudge style.
+  - **Bolt's line:** a short line pointing at the single most important item (the next meeting
+    if it's within the hour).
+  - Every row links to its draft (`#mail/d12`), its item (`#m:jobs/i4`) or its tab, and drafts
+    and meeting items open in place with the same cards the pages use.
+- **During the day:**
+  - The Ask box handles anything ad hoc.
+  - The free shortcuts (`todo … every weekday`, `done`, `move`, `waiting on`, `meeting`,
+    `focus`, `next`, `remove`) cost nothing, and work from your phone by mailing yourself
+    `td: …`.
+  - A focus session holds every non-urgent ping until it ends.
+  - When a meeting ends, Today asks what you promised.
 - **Evening, at the recap hour:**
-  - Finished todos move to the log.
+  - The recap is the day's last row: written for you, or now if you ask.
   - The recap summarizes the day, including pipeline changes: 2 sent, 1 reply, 1 interview.
 - **Night:** the memory digest writes the day to `memory/YYYY-MM-DD.md`.
 
@@ -108,6 +123,16 @@ The same pipeline with different sources and inputs:
 - **Inbox reading is narrow.** tamadesk only stores mail that belongs to something you started:
   a reply in one of your threads, or a message from a company in your pipeline. Everything else is
   ignored and never stored.
+  - The one exception is a **calendar invite** addressed to you (you're an attendee or the
+    organizer). Only the event is kept: title, times, recurrence, meeting link and organizer. The
+    mail body, description and other attendees are never stored. It can be switched off in Settings.
+  - An invite from a company in your pipeline moves that item to `interview`.
+- **Your calendar feed is a secret.** The private iCal address lives in `secrets.json`, never in
+  the API, logs or error messages. Feed and mail copies of an event merge on its iCal UID.
+- **Suggestions are rules first.** Only-you lines come from plain regex rules. Claude is asked
+  only when you press "anything else?" on a draft. A dismissed suggestion never comes back. XP comes
+  only when the data shows it happened (a reply was sent, the placeholder is gone), and undo
+  takes it back.
 - **Stages are earned, not guessed.**
   - Moving forward (`emailed`, `replied`) comes from real events.
   - Classification from keywords (`applied`, `interview`, `rejected`) is shown with the message

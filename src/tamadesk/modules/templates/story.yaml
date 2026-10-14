@@ -1,0 +1,38 @@
+title: Follow a story
+blurb: News about a person, company or place, from publishers' own pages. Only stories that mention
+  the names you give get in.
+icon: news
+params:
+  query:
+    label: What's the story? (a few words, e.g. Starlink India)
+    default: Starlink India
+  names:
+    label: Every story must mention one of (comma separated)
+    default: Starlink
+  market:
+    label: News from (en-in for India, en-us, en-gb; blank for any)
+    default: ''
+module:
+  name: Story
+  icon: news
+  every: 3h
+  sources:
+  - type: news
+    query: ${query}
+    market: ${market}
+  match:
+  - ${names}
+  interests:
+  - ${names}
+  actions:
+  - save
+  - skip
+  - summarize
+  - open
+  workflows:
+  - label: Catch me up
+    prompt: Catch me up on this story from the articles below, oldest first, in five short bullets, and
+      say what to watch for next.
+  - label: Write a post
+    prompt: Pick the most interesting story below and draft a short opinion post about it in my voice.
+      Save it with write_note.

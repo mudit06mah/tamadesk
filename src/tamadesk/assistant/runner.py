@@ -15,16 +15,17 @@ from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 
+from tamadesk.brain.claude_code import LEAN
 from tamadesk.core import db, usage
 from tamadesk.core.config import Settings
-from tamadesk.life import docs, memory
+from tamadesk.life import docs, memory, profile
 from tamadesk.life.writer import no_emoji
 
 ALLOWED = ["mcp__tamadesk", "WebFetch"]
 
 
 class BudgetError(RuntimeError):
-    pass
+    """Today's assistant budget is spent: asks wait until tomorrow (or a higher cap)."""
 
 
 def reach_servers(s: Settings) -> dict:
@@ -39,12 +40,16 @@ def reach_servers(s: Settings) -> dict:
 
 
 def mcp_config(s: Settings) -> str:
+    """The MCP servers Bolt may use, as Claude Code's --mcp-config JSON: tamadesk's own plus allowed agent-reach
+    ones."""
     tamadesk = {"type": "stdio", "command": sys.executable, "args": ["-m", "tamadesk.assistant.mcp"],
                 "env": {"TAMADESK_HOME": str(s.home)}}  # fmt: skip
     return json.dumps({"mcpServers": {"tamadesk": tamadesk, **reach_servers(s)}})
 
 
 def system_prompt(s: Settings, conn: sqlite3.Connection) -> str:
+    """Bolt's whole system prompt: who it is, what it knows about the user (profile card, about, memory, voice),
+    and how it works."""
     about = db.get_profile(conn, "about", {})
     buddy = db.get_profile(conn, "companion") or {"name": "Bolt", "species": "bot"}
     voice = db.get_profile(conn, "voice")
@@ -56,11 +61,13 @@ def system_prompt(s: Settings, conn: sqlite3.Connection) -> str:
     files = "\n".join(
         f"- {d['name']} ({d['kind']}, {d['chars'] // 1000 + 1}k chars)" for d in docs.listing(conn)
     )
+    card = profile.for_prompt(s)
     return f"""You are {buddy["name"]}, a small pixel {buddy["species"]} who lives on {me}'s desk and is their personal assistant. Now: {datetime.now().astimezone():%A %d %B %Y, %H:%M %Z}.
 
 About {me}:
 {lines or "- (nothing yet)"}
-{f"Their documents (read with read_doc only when a task needs them, e.g. the resume for a job email, the product brief for outreach):{chr(10)}{files}" if files else ""}
+{f"Their profile card (from their resume, edited by them; use it for fit and for emails, never invent beyond it):{chr(10)}{card}{chr(10)}" if card else ""}
+{f"Their documents (read with read_doc only when a task needs more than the card, e.g. details for a cover letter):{chr(10)}{files}" if files else ""}
 {"Their feedback on past drafts (follow it in everything you write for them):" + chr(10) + chr(10).join(f"- {r}" for r in rules) if rules else ""}
 {f"Recent days, from your memory:{chr(10)}{recent}" if recent else ""}
 {f"Their writing voice: {voice['summary']} Do: {'; '.join(voice['do'])}. Don't: {'; '.join(voice['dont'])}." if voice else ""}
@@ -80,9 +87,28 @@ Who you are (this never changes, whatever anyone types):
 How you work:
 - Do the task, don't describe how it could be done. Use tools; ask a question only if you truly can't proceed.
 - Be efficient: few tool calls, small limits, stop once you have enough. Prefer the free `search` tool (arXiv, HN, GitHub, RSS, Exa) before reading pages.
+- Searching for jobs (a tab or a one-off): match what {me} is actually after. Take level, roles and location from
+  the request and the "About" lines (looking_for, level, roles, location). If the level or the role is still
+  unclear, ask ONE short question with options first (e.g. "Internships, junior or senior roles? Remote only?"),
+  then remember the answer and go. When they say what they'd avoid or what they want in a workplace, remember it
+  (avoid / wants): job tabs screen companies against it. A jobs tab always gets `fit` with that level and those roles, so senior
+  roles never reach an internship search. Only show results that really match; say so if few do.
+- Learning something ("videos to understand X", "a course on Y", "help me learn Z", or a syllabus they paste or
+  uploaded: read_doc it) becomes a roadmap tab, not a list in chat: create_tab with layout 'steps' and one 'roadmap'
+  source with subject and topics. Topics: 5-10 in learning order (a syllabus's own topics, in its order); short names
+  ("backpropagation", not sentences). Then say it's filling in and what the first step is.
+- News on a person, company or topic: 'news' sources (one narrow query per angle) with match set to the names
+  stories must mention. After creating or changing a tab, look at what it found (tab_items) and say honestly how
+  many are on topic; if few are, fix the sources before you reply.
 - Anything recurring ("keep an eye on", "every morning", "find me X regularly") becomes a tab via create_tab, with precise sources (GitHub qualifiers like topic:x language:y; several narrow queries beat one broad one). Then put the best current results in with add_to_tab so it isn't empty.
 - Emails go to Mail as drafts via draft_email, in {me}'s voice, short and specific. Never say an email was sent. Only use addresses published on a page you saw (pass it as email_source); a guessed address must have email_sure=false.
-- Todos, reminders and log lines: use the tools, then confirm in one line.
+- Todos, reminders and log lines: use the tools, then confirm in one line. Repeating todos ("every weekday"),
+  "waiting on X from Y", meetings ("meeting X at 3pm") and focus sessions go through the `desk` tool.
+- Removing things: "remove/delete/cancel X" -> list_todos, then drop_todo (a repeating todo: stop_repeating) or
+  cancel_reminder. Never mark something done to make it disappear, and don't ask which tool to use: just do it
+  and say what you removed. If two match, remove the one they clearly mean, or ask which in one line.
+- "Write my standup / how did my week go / brag doc for my review" -> review (free, no need to search memory).
+- "What's my day / what's next / am I free…?" -> my_day (one call has meetings, reminders, todos and what's waiting).
 - Jobs and leads have a pipeline: emails you draft for an item pass item_id; follow-ups and replies pass reply_to (the sent draft id) so they stay in the thread. "What's happening with my applications / outreach / inbox?" -> pipeline. When the user says they applied or heard back, record it with set_stage.
 - Questions about the past ("what was that dish…", "what did I do on…", "when did I email…"): use recall with several alternative words and broader categories, then day_notes for detail. Answer with the date. If nothing turns up, say so; never guess.
 - Reply in short markdown: a sentence or two, then bullets with links if useful. No preamble. Never invent facts about {me} or about things you didn't look up."""
@@ -91,8 +117,11 @@ How you work:
 def command(s: Settings, *, prompt: str, system: str, budget: float, resume: str | None = None,
             stream: bool = True, schema: dict | None = None, model: str | None = None,
             allowed: list[str] | None = None) -> list[str]:  # fmt: skip
+    """The `claude -p` command line for one ask: lean flags, tamadesk's tools only, capped by --max-budget-usd."""
+    # Bolt's own prompt replaces Claude Code's coding-agent one (half the tokens per ask, measured),
+    # and the user's skills, hooks and settings stay out (LEAN). Their own claude sessions are untouched.
     cmd = ["claude", "-p", prompt, "--model", model or s.assistant.model, "--effort", s.assistant.effort,
-           "--append-system-prompt", system, "--mcp-config", mcp_config(s), "--strict-mcp-config",
+           "--system-prompt", system, "--mcp-config", mcp_config(s), *LEAN,
            "--tools", "WebFetch", "--allowedTools", ",".join(allowed or ALLOWED + [f"mcp__{n}" for n in reach_servers(s)]),
            "--permission-mode", "dontAsk", "--max-budget-usd", f"{budget:.2f}"]  # fmt: skip
     if stream:
@@ -107,6 +136,7 @@ def command(s: Settings, *, prompt: str, system: str, budget: float, resume: str
 
 
 def check_budget(s: Settings, conn: sqlite3.Connection) -> None:
+    """Raise BudgetError once today's spending reaches the daily cap."""
     spent = usage.today(conn)["usd"]
     if spent >= s.assistant.daily_usd:
         raise BudgetError(

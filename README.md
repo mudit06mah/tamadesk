@@ -48,8 +48,11 @@ first?".
 **You:**
 - Settings → You holds everything your companion knows about you (interests, stack, what you
   offer), editable anytime.
-- Add your resume or a product brief (PDF, .md, .txt). Bolt reads them only when a task needs
-  them, so they cost nothing otherwise.
+- Add your resume and Bolt writes a one-page **profile card** from it in the background (your
+  skills, projects and links, nothing invented). Every ask reads the card, and it's yours to edit.
+  Things you ask Bolt to remember land in its Notes.
+- Add a product brief or notes too (PDF, .md, .txt). Bolt reads them only when a task needs them,
+  so they cost nothing otherwise.
 
 **Tabs that know your next step:** each tab has one-click ✦ workflows for what you kept.
 - **Papers:** "Write a blog post" or "Study notes".
@@ -102,11 +105,36 @@ neon.
   drafts it *in the same thread*), write a follow-up when 4 work days pass without an answer
   (two at most), send waiting drafts, or act on jobs you kept but never touched.
 
-- **Quick capture**: one box for everything.
-  - `bought groceries, finally fixed the bug` goes to your daily log.
-  - `todo send the invoice` adds a todo.
-  - `remind me to stretch in 20 min` or `remind me to call mom at 6pm` sets a reminder.
+- **Quick capture**: one box for everything. These are instant and free, with no AI involved.
+  - `bought groceries, finally fixed the bug #home` goes to your daily log, with a tag.
+  - `todo send the invoice fri 5pm #acme` adds a todo with a deadline.
+  - `todo stretch every weekday 11am` starts a habit. Each on-time finish grows its chain (×7!).
+  - `remind me to call mom at 6pm`, or `… every sunday 6pm`.
+  - `done invoice` ticks the todo that matches. `move invoice to monday` gives it a new deadline.
+  - `waiting on specs from Riley by thu`: on Thursday it asks if you should nudge them.
+  - `meeting design crit tomorrow 3pm for 45 min`: it goes on your timeline, with a ring before.
+  - `focus 25 #client-a`: Bolt sits with you. A finished session pays XP, and your hours add up
+    per tag.
+  - `next` tells you the one thing to do now.
+- **Capture from your phone:** mail yourself `td: buy stamps` (once mail is connected).
 - **Todos** with XP, streaks and levels. Undoing a todo takes its XP back, so you can't farm it.
+  - Beating a deadline pays a bonus.
+  - Streak freezes (one per 7 days in a row) cover a missed day.
+- **Learn by doing:** New Game asks three things. Afterwards, the example chips under the Ask box
+  suggest shortcuts you haven't tried yet, and each one makes room for the next once you've used it.
+- **Your companion** sits in a ring that fills with XP, with your streak and today's todos on it.
+  Press ⇄ (or right-click) to swap between Blob, Sprout and Bolt.
+- **Removing things:** `remove workout` (or × on a repeating todo, then "stop it") ends a habit for
+  good, and "skip once" skips just this time. Bolt can remove todos and cancel reminders too.
+- **Look back for free:**
+  - `standup` gives yesterday, today and blockers, ready to paste.
+  - The **week card** shows your stats and the title you earned ("Deadline Slayer").
+- **Notifications with manners:**
+  - Reminders, meetings and deadlines within the hour ring.
+  - Everything else waits for the end of quiet hours or your focus session, then arrives as one
+    summary.
+- **Tabs you can finish:** each tab shows today's best 5, and old unseen items quietly expire. A
+  sparkle means something new, instead of a count of everything unread.
 - **Reminders** ring in the app and as a desktop notification.
 - **Your voice**: tamadesk studies a few things you wrote (in Mail) plus your last 10 sent emails,
   and every draft follows your style. Fold the overview open, remove any point that isn't you,
@@ -153,12 +181,21 @@ and old items are pruned, so tamadesk stays small.
 | **Claude Code** (default) | install [Claude Code](https://claude.com/claude-code) and run `claude` once to log in | tamadesk runs the official `claude` CLI on your machine, as you. It never sees or stores a token. |
 | **Ollama** | install [Ollama](https://ollama.com), then `ollama pull qwen3:8b` | fully offline. Choose it in Settings. |
 
-### Start at login (Linux)
+### Start at login (Linux, macOS, Windows)
 
 ```sh
-sed -e "s#@REPO@#$PWD#" -e "s#@PATH@#$PATH#" deploy/tamadesk.service > ~/.config/systemd/user/tamadesk.service
-systemctl --user enable --now tamadesk
+uv run tamadesk install-service      # --dry-run shows what it writes
 ```
+
+### Move to a new computer
+
+```sh
+tamadesk export                                 # one zip of your desk (secrets stay behind)
+tamadesk import tamadesk-2026-10-09.zip         # on the new one
+```
+
+**Mail** works with Gmail, Fastmail, iCloud, Outlook, Yahoo, Zoho or any IMAP/SMTP server, using an
+app password.
 
 ## Your data
 
@@ -174,15 +211,36 @@ it to start a new game. Set `TAMADESK_HOME` to put it somewhere else.
 ## Develop
 
 ```sh
-uv run tamadesk serve --reload        # API on :6206
+uv sync && (cd frontend && npm install)
+uv run tamadesk serve --reload        # API on :6206 (TAMADESK_HOME=/tmp/desk for a throwaway desk)
 cd frontend && npm run dev            # UI with hot reload, proxies /api to :6206
-uv run pytest && uv run ruff check .
 ```
 
-See [docs/plan.md](docs/plan.md) for the roadmap, the art, motion and sound direction, and how to
-add a companion.
+Before a pull request, all of these should pass:
+
+```sh
+uv run ruff check . && uv run ruff format --check . && uv run pytest
+cd frontend && npx tsc -b && npx oxlint src && npm run build
+```
+
+**Where things go:**
+
+| You want to add | Where |
+| --- | --- |
+| A new kind of tab | A template in `modules/templates/*.yaml`, plus (if needed) one `@source` function in `modules/sources.py`. |
+| Something Bolt can do | A `@tool` in `assistant/tools.py`. Pair every create tool with a remove one. |
+| A typed shortcut ("todo …", "focus 25") | `life/capture.py`, and the Ask box's `FREE` in `frontend/src/AskStore.tsx`. |
+| A database column or table | Append to `MIGRATIONS` in `core/db.py`. Never edit an applied one. |
+| Anything about time | `core/clock.py`. The database stores UTC; people see local time. |
+| A sound or an animation | The tables in [docs/plan.md](docs/plan.md), then `fx/sound.ts` or `fx/Fx.tsx`. |
+| A companion | `SPECIES` in `frontend/src/Companion.tsx` (see docs/plan.md). |
+
+[CLAUDE.md](CLAUDE.md) lists the project's rules: no personal data in the repo, nothing sent without
+a click, XP only for real progress, free and login-free sources, and the rest. They apply to people
+and AI assistants alike. [docs/plan.md](docs/plan.md) has the roadmap, the art, motion and sound
+direction, and what each version added.
 
 ## License
 
-MIT. Art and sounds that ship with tamadesk are MIT too, unless a file in `frontend/src/assets`
-says otherwise.
+MIT. Art and sounds that ship with tamadesk are MIT too (the sounds are synthesized in code), unless
+a file in `frontend/src/assets` says otherwise.

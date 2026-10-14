@@ -6,6 +6,7 @@ No token is stored here: `gh` already holds the user's auth. Cached briefly to s
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -39,7 +40,39 @@ def _row(n: dict) -> dict:
     }  # fmt: skip
 
 
+# notifications worth a row on Today: someone needs you, or your PR's checks failed
+WANTED = {"review_requested": "review requested", "mention": "you were mentioned", "team_mention": "your team was mentioned",
+          "assign": "assigned to you", "ci_activity": "CI needs a look"}  # fmt: skip
+
+
+def cached() -> dict | None:
+    """The last answer, without asking GitHub (for Today and the reviews, which must stay fast)."""
+    return _cache["data"]
+
+
+def _html(api_url: str | None, repo: str) -> str:
+    """api.github.com/repos/o/r/pulls/12 -> github.com/o/r/pull/12."""
+    m = re.match(r"https://api\.github\.com/repos/([^/]+/[^/]+)/(pulls|issues)/(\d+)", api_url or "")
+    if not m:
+        return f"https://github.com/{repo}"
+    return f"https://github.com/{m.group(1)}/{'pull' if m.group(2) == 'pulls' else 'issues'}/{m.group(3)}"
+
+
+def _notifications() -> list[dict]:
+    proc = subprocess.run(["gh", "api", "notifications?participating=true&per_page=30"],
+                          capture_output=True, text=True, timeout=30, check=False)  # fmt: skip
+    try:
+        rows = json.loads(proc.stdout or "[]")
+    except ValueError:
+        return []
+    return [{"id": n["id"], "reason": WANTED[n["reason"]], "title": n["subject"]["title"],
+             "repo": n["repository"]["full_name"], "url": _html(n["subject"].get("url"), n["repository"]["full_name"]),
+             "updated_at": n["updated_at"]}
+            for n in rows if isinstance(n, dict) and n.get("reason") in WANTED]  # fmt: skip
+
+
 def status(refresh: bool = False, n: int = 30) -> dict:
+    """The user's GitHub work through their own `gh` login, cached for 5 minutes."""
     if not refresh and _cache["data"] and time.monotonic() - _cache["at"] < 300:
         return _cache["data"]
     if not shutil.which("gh"):
@@ -70,5 +103,6 @@ def status(refresh: bool = False, n: int = 30) -> dict:
                   for r in ((d.get("me") or {}).get("repositories") or {}).get("nodes", [])
                   if r and not r["isArchived"] and not r["isFork"]],
     }  # fmt: skip
+    data["notifications"] = _notifications()
     _cache.update(at=time.monotonic(), data=data)
     return data

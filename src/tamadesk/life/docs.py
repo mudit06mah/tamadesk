@@ -13,12 +13,14 @@ MAX_CHARS = 60_000
 
 
 def extract(name: str, data: bytes) -> str:
+    """The text of an uploaded file (PDF or plain text)."""
     if name.lower().endswith(".pdf"):
         return "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(data)).pages).strip()
     return data.decode("utf-8", "replace").strip()
 
 
 def add(conn: sqlite3.Connection, name: str, kind: str, data_b64: str) -> int:
+    """Store an uploaded document's text. Raises ValueError if there's no text in it (a scanned PDF)."""
     text = extract(name, base64.b64decode(data_b64))
     if len(text) < 20:
         raise ValueError("couldn't read any text from that file (scanned PDFs aren't supported yet)")
@@ -39,6 +41,7 @@ def save_note(conn: sqlite3.Connection, title: str, text: str) -> int:
 
 
 def listing(conn: sqlite3.Connection) -> list[dict]:
+    """Every document without its text: id, name, kind, size."""
     return [
         dict(r)
         for r in conn.execute(
@@ -48,6 +51,7 @@ def listing(conn: sqlite3.Connection) -> list[dict]:
 
 
 def read(conn: sqlite3.Connection, ref: str) -> str | None:
+    """A document's text by id, name or kind (the newest wins), or None."""
     row = conn.execute("SELECT text FROM docs WHERE CAST(id AS TEXT) = ? OR name = ? OR kind = ? ORDER BY id DESC",
                        (str(ref), ref, ref)).fetchone()  # fmt: skip
     return row["text"] if row else None

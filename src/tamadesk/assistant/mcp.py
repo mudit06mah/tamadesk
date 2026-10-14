@@ -13,6 +13,7 @@ from tamadesk.core.config import load_settings
 
 
 def handle(s, msg: dict) -> dict | None:
+    """Answer one JSON-RPC message from Claude Code: initialize, list tools, or call one. None for notifications."""
     method, mid = msg.get("method"), msg.get("id")
     if mid is None:  # notifications (e.g. notifications/initialized) get no reply
         return None
@@ -37,6 +38,7 @@ def handle(s, msg: dict) -> dict | None:
 
 
 def main() -> None:
+    """Serve tamadesk's tools over stdio (Claude Code starts this as an MCP server)."""
     s = load_settings()
     for line in sys.stdin:
         if line.strip() and (reply := handle(s, json.loads(line))) is not None:

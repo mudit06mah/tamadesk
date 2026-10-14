@@ -69,14 +69,14 @@ def test_notify_when_a_tab_gets_something_new(client, monkeypatch):
     from tamadesk.modules.sources import Item
 
     seen = []
-    monkeypatch.setattr(jobs, "notify", lambda title, body: seen.append((title, body)))
+    monkeypatch.setattr(jobs, "notify", lambda title, body, kind="news": seen.append((title, body, kind)))
     monkeypatch.setitem(sources.SOURCES, "fake", lambda **kw: [Item(ext_id="1", title="GitHub is down")])
     spec.save(
         get_settings(), spec.Module(id="status", name="Status", notify=True, sources=[{"type": "fake"}])
     )
     jobs.run_module("status")
     jobs.run_module("status")  # nothing new the second time: no ping
-    assert seen == [("Status", "1 new")]
+    assert seen == [("Status", "1 new", "tab")]  # a tab ping, so it's batched with the others
 
 
 def test_same_link_is_one_item(client, monkeypatch):

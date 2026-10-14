@@ -1,7 +1,8 @@
 // Shared retro-OS building blocks: windows with title bars, 7-segment counters, progress bars.
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { HALF_HOURS } from './api'
 import { play } from './fx/sound'
 
 export function Win({
@@ -73,33 +74,6 @@ export function Bar({ value, label }: { value: number; label?: string }) {
   )
 }
 
-// Minecraft-style pixel heart: outline, red fill, white shine. Empty hearts are grey.
-const HEART = [
-  '.xx...xx.',
-  'xrrx.xrrx',
-  'xrwrxrrrx',
-  'xrrrrrrrx',
-  'xrrrrrrrx',
-  '.xrrrrrx.',
-  '..xrrrx..',
-  '...xrx...',
-  '....x....',
-]
-
-export function PixelHeart({ full, size = 16 }: { full: boolean; size?: number }) {
-  const fill: Record<string, string> = {
-    x: 'var(--ink)',
-    r: full ? '#e5484d' : 'color-mix(in srgb, var(--muted) 45%, var(--win))',
-    w: full ? '#ffd9d9' : 'color-mix(in srgb, var(--muted) 45%, var(--win))',
-  }
-  return (
-    <svg className="heart" width={size} height={size} viewBox="0 0 9 9" shapeRendering="crispEdges" aria-hidden>
-      {HEART.flatMap((row, y) =>
-        [...row].map((c, x) => (c === '.' ? null : <rect key={`${x}-${y}`} x={x} y={y} width="1.02" height="1.02" fill={fill[c]} />)),
-      )}
-    </svg>
-  )
-}
 
 /** Retro modal window. Esc closes, focus moves into the dialog, backdrop click cancels. */
 export function Dialog({
@@ -191,5 +165,58 @@ export function Dialog({
       )}
     </AnimatePresence>,
     document.body,
+  )
+}
+
+/** A pill switch between a few lists (drafts/sent, new/bookmarked). The pill slides with a CSS
+ * transition, not a layout animation, so switching never makes the list below re-measure. */
+export function SegTabs<T extends string>({ tabs, value, onChange }: { tabs: [T, ReactNode][]; value: T; onChange: (t: T) => void }) {
+  const box = useRef<HTMLDivElement>(null)
+  const [pill, setPill] = useState<{ x: number; w: number } | null>(null)
+  const labels = tabs.map(([k]) => k).join()
+  useLayoutEffect(() => {
+    const on = box.current?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (on) setPill({ x: on.offsetLeft, w: on.offsetWidth })
+  }, [value, labels])
+  return (
+    <div className="seg-tabs" role="tablist" ref={box}>
+      {pill && <span className="seg-pill" style={{ transform: `translateX(${pill.x}px)`, width: pill.w }} />}
+      {tabs.map(([k, label]) => (
+        <button key={k} role="tab" aria-selected={value === k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** When the user's day starts and ends (setup and Settings): two half-hour pickers, and what they mean. */
+export function DayTimes({ wake, bed, onChange }: { wake: string; bed: string; onChange: (wake: string, bed: string) => void }) {
+  const late = bed < '05:00' // going to bed after midnight
+  return (
+    <div className="day-times">
+      <div className="field-row">
+        <label className="field">
+          <span>I usually wake up at</span>
+          <select value={wake} onChange={(e) => onChange(e.target.value, bed)}>
+            {HALF_HOURS.map((h) => (
+              <option key={h}>{h}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>and go to bed at</span>
+          <select value={bed} onChange={(e) => onChange(wake, e.target.value)}>
+            {HALF_HOURS.map((h) => (
+              <option key={h}>{h}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="muted small">
+        Your day runs from {wake} to {bed}
+        {late ? ' (after midnight still counts as today)' : ''}. The recap comes at {bed}, and quiet hours cover the night.
+      </p>
+    </div>
   )
 }

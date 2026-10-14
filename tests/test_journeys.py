@@ -150,7 +150,7 @@ def test_up_next_gathers_drafts_and_stale_kept_jobs(desk):
     client, conn, _ = desk
     add_draft(conn, ask="t", subject="Hi", body="b", to_email="")
     kinds = [x["kind"] for x in client.get("/api/next").json()]
-    assert kinds == ["drafts", "kept"]
+    assert kinds == ["draft", "kept"]
 
 
 def test_empty_address_is_not_called_guessed(desk):

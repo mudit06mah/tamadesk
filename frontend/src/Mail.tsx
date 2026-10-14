@@ -1,4 +1,5 @@
-// Mail: drafts your companion wrote (or you started), ready to check and send through your Gmail.
+// Mail: drafts your companion wrote (or you started), ready to check and send through your own mail
+// (Gmail, Fastmail, iCloud, Outlook, Yahoo, Zoho or any server).
 // Pairs with lead tabs: a lead's "email them" button asks the companion to research it and write here.
 // Not right? "Redraft" takes your note; notes are remembered as writing rules for every future draft.
 import { AnimatePresence, motion } from 'motion/react'
@@ -6,20 +7,22 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, askBolt, when, type InboxKind, type MailBox, type MailDraft, type Sample, type VoiceView } from './api'
 import { useCompanion } from './Companion'
 import { useFx } from './fx/Fx'
-import { DocsPanel } from './Docs'
 import { SendIcon } from './icons'
-import { Dialog, Win } from './ui'
-import type { Toast } from './util'
+import { OnlyYou } from './OnlyYou'
+import { Dialog, SegTabs, Win } from './ui'
+import { focusEl, focusId, useRefresh, type Toast } from './util'
 
 type Props = { notify: (t: string, k?: Toast['kind']) => void; onChange: () => void }
 
-export function Mail({ notify, onChange }: Props) {
+export function Mail({ focus = '', notify, onChange }: Props & { focus?: string }) {
   const fx = useFx()
   const buddy = useCompanion()
   const [tab, setTab] = useState<'draft' | 'sent'>('draft')
   const [box, setBox] = useState<MailBox | null>(null)
   const [setup, setSetup] = useState(false)
   const [checking, setChecking] = useState(false)
+  const [side, setSide] = useState(false)
+  const want = focusId(focus, 'd')
 
   const checkInbox = async () => {
     setChecking(true)
@@ -37,33 +40,39 @@ export function Mail({ notify, onChange }: Props) {
   }
 
   const load = useCallback(async () => setBox(await api.mail(tab)), [tab])
+  useRefresh(load)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on tab switch
     void load()
   }, [load])
 
+  // a link to one email (from Today): open the tab it lives in, then bring it into view
+  useEffect(() => {
+    if (want === null) return
+    api.draft(want).then(({ draft }) => setTab(draft.status === 'sent' ? 'sent' : 'draft'), () => undefined)
+  }, [want])
+  useEffect(() => {
+    if (want !== null && box) focusEl(`draft-${want}`)
+  }, [want, box])
+
   return (
-    <div className="mail-grid">
+    <div className={`mail-grid ${side ? '' : 'solo'}`}>
       <div className="mail-main">
         <header className="screen-head">
           <h1>Mail</h1>
           <div className="mod-tools">
-            <div className="seg-tabs" role="tablist">
-              {(['draft', 'sent'] as const).map((t) => (
-                <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-                  {t === 'draft' ? 'drafts' : 'sent'}
-                  {tab === t && <motion.span layoutId="segtab-mail" className="seg-tab-on" />}
-                </button>
-              ))}
-            </div>
+            <SegTabs tabs={[['draft', 'drafts'], ['sent', 'sent']]} value={tab} onChange={setTab} />
             {box?.ready && (
               <button className="btn tiny ghost" disabled={checking} onClick={checkInbox} title="Look for replies and company mail now (also runs every 10 minutes)">
                 {checking ? <span className="blink">checking…</span> : '⇣ check inbox'}
               </button>
             )}
+            <button className="btn tiny ghost" aria-expanded={side} onClick={() => (fx.sound(side ? 'close' : 'open'), setSide(!side))}>
+              voice {side ? '▴' : '▸'}
+            </button>
             {box && (
               <button className={`btn tiny ${box.ready ? 'ghost' : 'solid'}`} onClick={() => setSetup(true)}>
-                {box.ready ? `${box.dry_run ? 'dry run · ' : ''}${box.sent_today}/${box.daily_cap} today` : 'Connect Gmail'}
+                {box.ready ? `${box.dry_run ? 'dry run · ' : ''}${box.sent_today}/${box.daily_cap} today` : 'Connect mail'}
               </button>
             )}
           </div>
@@ -90,7 +99,7 @@ export function Mail({ notify, onChange }: Props) {
           <ul className="feed">
             <AnimatePresence initial={false}>
               {box.items.map((d) => (
-                <motion.li key={d.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 80, rotate: 3 }}>
+                <motion.li key={d.id} id={`draft-${d.id}`} layout="position" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, x: 80, rotate: 3, transition: { duration: 0.18 } }}>
                   {tab === 'draft' ? (
                     <DraftCard
                       d={d}
@@ -112,12 +121,17 @@ export function Mail({ notify, onChange }: Props) {
         )}
       </div>
 
-      <div className="mail-side">
-        <VoicePanel notify={notify} />
-        <Win title="context.dir">
-          <DocsPanel notify={notify} />
-        </Win>
-      </div>
+      {/* how drafts should sound: settings, so they fold away until asked for; documents live in Settings */}
+      <AnimatePresence initial={false}>
+        {side && (
+          <motion.div className="mail-side" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
+            <VoicePanel notify={notify} />
+            <p className="muted small">
+              Your resume and other documents are in <a href="#settings">Settings</a>.
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <SetupDialog
         open={setup}
         box={box}
@@ -133,10 +147,9 @@ export function Mail({ notify, onChange }: Props) {
   )
 }
 
-function DraftCard({ d, ready, notify, onGone, onSetup }: { d: MailDraft; ready: boolean; notify: Props['notify']; onGone: () => void; onSetup: () => void }) {
+export function DraftCard({ d, ready, notify, onGone, onSetup }: { d: MailDraft; ready: boolean; notify: Props['notify']; onGone: () => void; onSetup: () => void }) {
   const fx = useFx()
   const [f, setF] = useState({ subject: d.subject, body: d.body, to_name: d.to_name ?? '', to_email: d.to_email ?? '' })
-  const [checked, setChecked] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [rewriting, setRewriting] = useState(false)
   // only a guessed address that's still there needs the check (an empty field just needs filling in)
@@ -148,7 +161,7 @@ function DraftCard({ d, ready, notify, onGone, onSetup }: { d: MailDraft; ready:
     if (!ready) return onSetup()
     try {
       await save()
-      const r = await api.sendMail(d.id, checked)
+      const r = await api.sendMail(d.id, false) // a guessed address is checked through its "only you" line
       fx.sound('send')
       fx.burstAt(el, true)
       notify(r.dry_run ? `Dry run: sent to you (${r.to})` : `Sent to ${r.to}`)
@@ -176,23 +189,14 @@ function DraftCard({ d, ready, notify, onGone, onSetup }: { d: MailDraft; ready:
   }
 
   return (
-    <div className={`item draft-card ${rewriting ? 'rewriting' : ''}`}>
+    <div className={`item draft-card ${rewriting ? 'rewriting' : ''}`} data-toss>
       <ThreadLine d={d} />
       <div className="draft-to">
         <span className="to-label">TO</span>
         <input value={f.to_name} onChange={set('to_name')} onBlur={save} placeholder="name" />
         <input className={unsure ? 'unsure' : ''} value={f.to_email} onChange={set('to_email')} onBlur={save} placeholder="email" />
       </div>
-      {unsure && (
-        <label className="unsure-box">
-          <span>
-            <b>UNSURE:</b> this address was guessed, not published anywhere. A bounce hurts your Gmail reputation.
-          </span>
-          <span>
-            <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} /> I checked this address myself
-          </span>
-        </label>
-      )}
+      <OnlyYou items={d.suggestions ?? []} target="draft" id={d.id} canAsk={d.can_ask} notify={notify} onChange={onGone} />
       {d.email_source && !unsure && (
         <span className="muted small">
           address found at{' '}
@@ -231,20 +235,27 @@ function DraftCard({ d, ready, notify, onGone, onSetup }: { d: MailDraft; ready:
         )}
       </AnimatePresence>
       <div className="item-acts">
-        <motion.button className="btn tiny ghost" whileTap={{ scale: 0.9 }} onClick={async () => (await api.dropMail(d.id), fx.sound('drop'), onGone())}>
+        <motion.button className="btn tiny ghost" whileTap={{ scale: 0.9 }} onClick={async (e) => {
+          const el = e.currentTarget
+          await api.dropMail(d.id)
+          fx.toss(el)
+          fx.offerUndo('Draft tossed', () => api.restoreMail(d.id))
+          onGone()
+        }}>
           toss
         </motion.button>
         <motion.button className="btn tiny" whileTap={{ scale: 0.9 }} disabled={rewriting} onClick={() => setNote(note === null ? '' : null)}>
           ✎ redraft
         </motion.button>
         <span className="grow" />
-        <motion.button className="btn solid send-btn" whileTap={{ scale: 0.9, rotate: -3 }} disabled={(unsure && !checked) || rewriting} onClick={(e) => send(e.currentTarget)}>
+        <motion.button className="btn solid send-btn" whileTap={{ scale: 0.9, rotate: -3 }} disabled={(ready && unsure) || rewriting}
+          title={ready && unsure ? 'Check the guessed address first (tick it above)' : undefined} onClick={(e) => send(e.currentTarget)}>
           {ready ? (
             <>
               Send <SendIcon />
             </>
           ) : (
-            'Connect Gmail to send'
+            'Connect mail to send'
           )}
         </motion.button>
       </div>
@@ -319,14 +330,24 @@ function SentRow({ d, notify, onChange }: { d: MailDraft; notify: Props['notify'
   )
 }
 
+// where each provider makes app passwords
+const APP_PASSWORD: Record<string, string> = {
+  gmail: 'https://myaccount.google.com/apppasswords',
+  fastmail: 'https://app.fastmail.com/settings/security/apps',
+  icloud: 'https://account.apple.com/account/manage',
+  yahoo: 'https://login.yahoo.com/account/security',
+  zoho: 'https://accounts.zoho.com/home#security/app_password',
+}
+
 function SetupDialog({ open, box, onClose, onSaved, notify }: { open: boolean; box: MailBox | null; onClose: () => void; onSaved: () => void; notify: Props['notify'] }) {
-  const [f, setF] = useState({ address: '', from_name: '', app_password: '', dry_run: true, daily_cap: 20 })
+  const [f, setF] = useState({ address: '', from_name: '', app_password: '', dry_run: true, daily_cap: 20, provider: 'gmail', imap_host: '', smtp_host: '', smtp_port: 465 })
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- start from the saved settings when opened
-    if (open && box) setF((x) => ({ ...x, address: box.address, dry_run: box.dry_run, daily_cap: box.daily_cap, app_password: '' }))
+    if (open && box) setF((x) => ({ ...x, address: box.address, dry_run: box.dry_run, daily_cap: box.daily_cap, provider: box.provider, app_password: '' }))
   }, [open, box])
+  const help = APP_PASSWORD[f.provider]
   return (
-    <Dialog open={open} title="gmail.cfg" onClose={onClose}>
+    <Dialog open={open} title="mail.cfg" onClose={onClose}>
       <form
         className="dialog-form"
         onSubmit={async (e) => {
@@ -339,16 +360,43 @@ function SetupDialog({ open, box, onClose, onSaved, notify }: { open: boolean; b
           }
         }}
       >
+        <div className="chips">
+          {(box?.providers ?? ['gmail']).map((p) => (
+            <button type="button" key={p} className={`chip ${f.provider === p ? 'on' : ''}`} onClick={() => setF({ ...f, provider: p })}>
+              {p}
+            </button>
+          ))}
+        </div>
         <p className="dialog-lead">
-          Sends go through your Gmail with an{' '}
-          <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer">
-            app password
-          </a>{' '}
-          (needs 2-step verification). It's stored only on this computer.
+          Sends and the inbox check use an{' '}
+          {help ? (
+            <a href={help} target="_blank" rel="noreferrer">
+              app password
+            </a>
+          ) : (
+            'app password'
+          )}{' '}
+          from your provider (usually needs 2-step verification). It's stored only on this computer.
         </p>
+        {f.provider === 'custom' && (
+          <div className="field-row">
+            <label className="field">
+              <span>IMAP server</span>
+              <input value={f.imap_host} onChange={(e) => setF({ ...f, imap_host: e.target.value })} placeholder="imap.example.com" />
+            </label>
+            <label className="field">
+              <span>SMTP server</span>
+              <input value={f.smtp_host} onChange={(e) => setF({ ...f, smtp_host: e.target.value })} placeholder="smtp.example.com" />
+            </label>
+            <label className="field">
+              <span>SMTP port</span>
+              <input type="number" value={f.smtp_port} onChange={(e) => setF({ ...f, smtp_port: Number(e.target.value) })} />
+            </label>
+          </div>
+        )}
         <label className="field">
-          <span>Gmail address</span>
-          <input data-autofocus value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} placeholder="you@gmail.com" />
+          <span>Your address</span>
+          <input data-autofocus value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} placeholder="you@example.com" />
         </label>
         <label className="field">
           <span>Your name (shown to recipients)</span>

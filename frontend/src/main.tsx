@@ -1,3 +1,4 @@
+// Entry point: fonts, styles, the saved theme, and the app.
 import '@fontsource/dotgothic16/400.css'
 import '@fontsource/vt323/400.css'
 import { StrictMode } from 'react'

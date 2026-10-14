@@ -46,6 +46,37 @@ and a GitHub explorer. Here is what came out of it.
 - **Accounts with tokens:** Vercel, analytics, PagerDuty, Slack, calendars.
 - **Bulk email blasts.** One reviewed email at a time.
 
+## v0.4: eight personas, one week each
+
+The roles were:
+- an intern hunter
+- a senior engineer
+- an engineering manager
+- an indie founder
+- a freelancer
+- an open-source maintainer
+- a developer advocate
+- someone with fragmented time
+
+The biggest friction wasn't missing features: asking took about half a minute, capture only
+worked in one tab, and tabs felt like debt. What changed:
+
+| Friction | Now |
+|---|---|
+| Small things went through the AI (slow, paid) | Free shortcuts for daily actions; `next` answers locally |
+| Capture only in the browser tab | Mail yourself `td: …` (phone notifications later) |
+| Nothing repeated | `every weekday`, monthly, weekly; habit chains |
+| Red counts on every tab | A sparkle for new, the best 5 first, unseen items expire |
+| Pings any time | Quiet hours, holding pings during focus, one summary, batched tab pings |
+| A 12-screen setup | 3 questions; the Ask box's chips then suggest shortcuts you haven't tried |
+| Delegation, promises, standups | `waiting on`, "anything you promised?", standup, week card, brag doc |
+| Gmail only, Linux autostart only | Any IMAP/SMTP provider; `install-service` on Linux, macOS, Windows; export/import |
+| School, CFP, GitHub deadlines | Deadline calendars, a CFPs tab, GitHub notifications on Today |
+
+Still out of scope, as a decision for later: work tools that need tokens (Jira, Linear, Slack). The
+options are the user's own CLI logins (like `gh`), or read-only MCP servers they already set up in
+Claude Code.
+
 ## Next candidates
 - A `name_check` tool: domain availability through RDAP, plus npm, PyPI and GitHub.
 - An `osv` source for vulnerabilities in your dependencies.

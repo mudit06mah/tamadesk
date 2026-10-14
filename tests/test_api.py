@@ -75,3 +75,14 @@ def test_set_one_about_field_keeps_the_rest(client):
     about = client.post("/api/about", json={"key": "interests", "value": " devops, games "}).json()
     assert about == {"name": "Sam", "interests": "devops, games"}
     assert client.post("/api/about", json={"key": "Bad Key!", "value": "x"}).status_code == 422
+
+
+def test_switching_companions_keeps_a_custom_name(client):
+    client.post("/api/onboarding", json={"about": {}, "companion": {"species": "bot", "name": "Bolt"}})
+    assert client.post("/api/companion", json={"species": "sprout"}).json() == {
+        "species": "sprout",
+        "name": "Sprout",
+    }
+    client.post("/api/onboarding", json={"about": {}, "companion": {"species": "blob", "name": "Pixel"}})
+    assert client.post("/api/companion", json={"species": "bot"}).json()["name"] == "Pixel"
+    assert client.post("/api/companion", json={"species": "dragon"}).status_code == 400

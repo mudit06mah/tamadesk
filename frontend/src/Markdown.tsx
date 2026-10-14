@@ -1,6 +1,6 @@
 // The small slice of markdown the assistant writes (paragraphs, lists, headings, **bold**,
 // `code`, [links](url), bare URLs), rendered as React elements: never raw HTML.
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)\s]+\)|https?:\/\/[^\s)]+)/g
 
@@ -36,7 +36,24 @@ export function Markdown({ text }: { text: string }) {
     )
     list = null
   }
+  let code: { lang: string; lines: string[] } | null = null
   for (const raw of text.split('\n')) {
+    // ``` fences: code kept exactly as written (indentation, blank lines), with a copy button
+    const fence = raw.match(/^\s*```\s*([\w+#.-]*)\s*$/)
+    if (fence) {
+      if (code) {
+        blocks.push(<CodeBlock key={blocks.length} lang={code.lang} text={code.lines.join('\n')} />)
+        code = null
+      } else {
+        flush()
+        code = { lang: fence[1], lines: [] }
+      }
+      continue
+    }
+    if (code) {
+      code.lines.push(raw)
+      continue
+    }
     const line = raw.trimEnd()
     const item = line.match(/^\s*(?:[-*•]|(\d+)[.)])\s+(.*)$/)
     if (item) {
@@ -52,5 +69,30 @@ export function Markdown({ text }: { text: string }) {
     else if (line.trim()) blocks.push(<p key={blocks.length}>{inline(line)}</p>)
   }
   flush()
+  if (code) blocks.push(<CodeBlock key={blocks.length} lang={code.lang} text={code.lines.join('\n')} />) // still streaming in
   return <div className="md">{blocks}</div>
+}
+
+function CodeBlock({ lang, text }: { lang: string; text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="code-block">
+      <div className="code-bar">
+        <span>{lang || 'code'}</span>
+        <button
+          className="btn tiny ghost"
+          onClick={async () => {
+            await navigator.clipboard.writeText(text)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1400)
+          }}
+        >
+          {copied ? '✓ copied' : 'copy'}
+        </button>
+      </div>
+      <pre>
+        <code>{text}</code>
+      </pre>
+    </div>
+  )
 }

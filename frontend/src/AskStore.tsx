@@ -5,7 +5,9 @@ import { api, ask, type ChatMsg, type Step, type Usage } from './api'
 import { useFx } from './fx/Fx'
 import type { Toast } from './util'
 
-export const FREE = /^\s*(todo\b|t:|\[\s?\]|remind\s+me\b|log\b|>)/i
+// the desk's instant, free shortcuts (life/capture.py VERBS; a test keeps the two in sync)
+export const FREE =
+  /^\s*(todo\b|t:|\[\s?\]|remind\s+me\b|log\b|>|done\b|finished\b|✓|move\b|push\b|snooze\b|postpone\b|waiting\s+(on|for)\b|meeting\b|mtg\b|call\b|meet\b|focus\b|(remove|delete|drop|cancel|stop)\s|(next|what'?s\s+next|what\s+now|now\s+what)\s*\??\s*$|\?\s*$)/i
 const SAVED = 'tamadesk-chat'
 
 type Ctx = {
@@ -80,9 +82,23 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
       if (FREE.test(t)) {
         // instant and free: handled by the desk, no AI involved
         const r = await api.capture(t.replace(/^\s*(log\b\s*:?|>)\s*/i, ''))
-        fx.sound('capture')
-        fx.float(document.querySelector('.ask-box'), r.kind === 'log' ? `+${r.xp} XP` : r.kind === 'todo' ? '+ todo' : 'reminder set')
-        if (r.no_time) notify("Couldn't find a time in that, so it's a todo. Try “in 10 minutes” or “at 6pm”.", 'err')
+        const box = document.querySelector('.ask-box')
+        if (r.kind === 'done') {
+          fx.sound('check')
+          fx.burstAt(box, !!r.milestone)
+          fx.float(box, `+${r.xp} XP`)
+          setDoneTick((n) => n + 1)
+          if (r.milestone) fx.banner({ kind: 'goal', title: `${r.chain} IN A ROW!`, sub: `${r.text}: the habit is sticking.` })
+        } else if (r.kind === 'focus') {
+          fx.sound('start')
+        } else if (r.kind === 'next') {
+          fx.sound('tap')
+        } else {
+          fx.sound('capture')
+          fx.float(box, r.xp ? `+${r.xp} XP` : r.kind === 'todo' ? '+ todo' : r.kind === 'meeting' ? '+ meeting' : r.kind === 'waiting' ? '+ waiting' : '✓')
+        }
+        if (r.no_time && r.kind !== 'move') notify("Couldn't find a time in that, so it's a todo. Try “in 10 minutes” or “at 6pm”.", 'err')
+        else if (r.message) notify(r.message, r.kind === 'move' && !r.id ? 'err' : 'ok')
         onChange()
         return
       }

@@ -1,10 +1,11 @@
-// Settings: which brain, when the recap runs, the daily goal, and replaying the New Game setup.
+// Settings: which brain, your day (wake to bed, recap at bedtime), the daily goal, the calendar, and replaying the New Game setup.
 import { useEffect, useState } from 'react'
-import { api, type Question, type State, type Usage } from './api'
+import { api, pad2, when, type CalendarStatus, type Question, type State, type Usage } from './api'
 import { DocsPanel } from './Docs'
 import { ThemePicker } from './ThemePicker'
 import { useFx } from './fx/Fx'
-import { Win } from './ui'
+import { setSoundPack, soundPack, type Pack } from './fx/sound'
+import { DayTimes, Win } from './ui'
 import type { Toast } from './util'
 
 const MODELS = { claude_code: ['sonnet', 'opus', 'haiku'], ollama: ['qwen3:8b', 'llama3.1:8b', 'gemma3:12b'] }
@@ -27,8 +28,9 @@ export function Settings({
   const fx = useFx()
   const [kind, setKind] = useState(s.brain.kind)
   const [model, setModel] = useState(s.brain.model)
-  const [hour, setHour] = useState(s.day.recap_hour)
+  const [day, setDay] = useState({ wake: s.day.wake, bed: s.day.bed })
   const [goal, setGoal] = useState(s.day.todo_goal)
+  const [quiet, setQuiet] = useState({ start: s.day.quiet_start ?? -1, end: s.day.quiet_end ?? 8 })
   const [check, setCheck] = useState<{ ok: boolean; detail: string } | null>(null)
   const [use, setUse] = useState<Usage | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
@@ -46,9 +48,9 @@ export function Settings({
 
   const save = async () => {
     try {
-      await api.settings({ brain_kind: kind, brain_model: model, recap_hour: hour, todo_goal: goal, assistant_model: ai.model, assistant_effort: ai.effort, max_usd_per_ask: ai.per, daily_usd: ai.daily })
+      await api.settings({ quiet_start: quiet.start, quiet_end: quiet.end, brain_kind: kind, brain_model: model, wake: day.wake, bed: day.bed, todo_goal: goal, assistant_model: ai.model, assistant_effort: ai.effort, max_usd_per_ask: ai.per, daily_usd: ai.daily })
       fx.sound('stamp')
-      notify('Saved. Restart tamadesk for a new recap time to take effect.')
+      notify('Saved.')
       setCheck(await api.brainCheck())
       await refresh()
     } catch (e) {
@@ -88,6 +90,7 @@ export function Settings({
             setTheme(t)
           }}
         />
+        <SoundPicker />
       </Win>
 
       <Win title="assistant.sys">
@@ -148,21 +151,39 @@ export function Settings({
       </Win>
 
       <Win title="day.cfg">
-        <label className="field">
-          <span>evening recap at</span>
-          <select value={hour} onChange={(e) => setHour(Number(e.target.value))}>
-            {Array.from({ length: 24 }, (_, h) => (
-              <option key={h} value={h}>
-                {String(h).padStart(2, '0')}:00
-              </option>
-            ))}
-          </select>
-        </label>
+        <DayTimes wake={day.wake} bed={day.bed} onChange={(wake, bed) => setDay({ wake, bed })} />
+        <div className="field-row">
+          <label className="field">
+            <span>quiet hours from (only reminders and meetings ring)</span>
+            <select value={quiet.start} onChange={(e) => setQuiet({ ...quiet, start: Number(e.target.value) })}>
+              <option value={-1}>off</option>
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>
+                  {pad2(h)}:00
+                </option>
+              ))}
+            </select>
+          </label>
+          {quiet.start >= 0 && (
+            <label className="field">
+              <span>until</span>
+              <select value={quiet.end} onChange={(e) => setQuiet({ ...quiet, end: Number(e.target.value) })}>
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {pad2(h)}:00
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
         <label className="field">
           <span>todos for a "good day"</span>
           <input type="number" min={1} max={20} value={goal} onChange={(e) => setGoal(Number(e.target.value))} />
         </label>
       </Win>
+
+      <CalendarPanel notify={notify} />
 
       <div className="dialog-actions">
         <button className="btn ghost" onClick={replay}>
@@ -171,6 +192,160 @@ export function Settings({
         <button className="btn solid" onClick={save}>
           Save settings
         </button>
+      </div>
+    </div>
+  )
+}
+
+/** Meetings on Today: invites read from the mail tamadesk already checks, plus an optional private
+ * iCal address. The address is a password to your calendar, so it's write-only here. Saves itself. */
+function CalendarPanel({ notify }: { notify: (t: string, k?: Toast['kind']) => void }) {
+  const fx = useFx()
+  const [cal, setCal] = useState<CalendarStatus | null>(null)
+  const [feed, setFeed] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    void api.calendar().then(setCal)
+  }, [])
+  const put = async (b: Parameters<typeof api.calendarSetup>[0], msg?: string) => {
+    setBusy(true)
+    try {
+      setCal(await api.calendarSetup(b))
+      fx.sound('stamp')
+      if (msg) notify(msg)
+    } catch (e) {
+      notify((e as Error).message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+  if (!cal) return null
+  return (
+    <Win title="calendar.ics">
+      <p className="muted small">
+        Meetings show up on Today with a ring before each one. Nothing is sent anywhere: tamadesk only reads.
+      </p>
+      <label className="check-row">
+        <input type="checkbox" checked={cal.from_mail} onChange={(e) => put({ from_mail: e.target.checked })} /> Read calendar invites in my mail
+        (only the event: title, time, link, organizer; never the email itself)
+      </label>
+      <label className="field">
+        <span>ring before a meeting (minutes)</span>
+        <input type="number" min={0} max={120} value={cal.remind_min} onChange={(e) => setCal({ ...cal, remind_min: Number(e.target.value) })} onBlur={() => put({ remind_min: cal.remind_min })} />
+      </label>
+      <form
+        className="field"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (feed.trim()) void put({ feed: feed.trim() }, 'Saved. Reading your calendar now.').then(() => setFeed(''))
+        }}
+      >
+        <span>
+          private calendar address (iCal), optional ·{' '}
+          <a href="https://support.google.com/calendar/answer/37648#zippy=%2Cget-your-calendar-view-only" target="_blank" rel="noreferrer">
+            where to find it
+          </a>
+        </span>
+        <div className="rule-add">
+          <input type="password" autoComplete="off" value={feed} onChange={(e) => setFeed(e.target.value)} placeholder={cal.feed_set ? 'saved (paste a new one to replace it)' : 'https://calendar.google.com/calendar/ical/…/basic.ics'} />
+          <button className="btn tiny" disabled={busy || !feed.trim()}>
+            save
+          </button>
+        </div>
+      </form>
+      <DeadlineFeeds cal={cal} put={put} />
+      {cal.feed_set && (
+        <div className="item-acts">
+          <span className="muted small">{cal.error ? <span className="bad-text">{cal.error}</span> : cal.synced ? `read ${when(cal.synced)} · ${cal.events} events` : 'not read yet'}</span>
+          <span className="grow" />
+          <button
+            className="btn tiny ghost"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              try {
+                const r = await api.calendarSync()
+                setCal(r)
+                fx.sound(r.error ? 'drop' : 'tap')
+              } finally {
+                setBusy(false)
+              }
+            }}
+          >
+            ↻ read now
+          </button>
+          <button className="btn tiny ghost" disabled={busy} onClick={() => put({ feed: '' }, 'Calendar address removed.')}>
+            remove
+          </button>
+        </div>
+      )}
+    </Win>
+  )
+}
+
+/** Calendars whose events are deadlines (school assignments from Canvas or Moodle, a release plan):
+ * each one becomes a todo with that deadline, tagged with the feed's name, and follows the feed. */
+function DeadlineFeeds({ cal, put }: { cal: CalendarStatus; put: (b: Parameters<typeof api.calendarSetup>[0], msg?: string) => Promise<void> }) {
+  const [f, setF] = useState({ url: '', tag: '' })
+  return (
+    <div className="field">
+      <span>deadline calendars: each event becomes a todo due then (school assignments, a release plan…)</span>
+      <ul className="voice-points rules">
+        {cal.deadline_feeds.map((d) => (
+          <li key={d.tag}>
+            <span>
+              #{d.tag} <span className="muted small">· {d.host}</span>
+            </span>
+            <button className="icon-x" title="Remove" onClick={() => put({ remove_deadline_feed: d.tag }, `#${d.tag} removed.`)}>
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form
+        className="rule-add"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (f.url.trim() && f.tag.trim()) void put({ add_deadline_feed: f }, `#${f.tag} added. Reading it now.`).then(() => setF({ url: '', tag: '' }))
+        }}
+      >
+        <input value={f.tag} onChange={(e) => setF({ ...f, tag: e.target.value })} placeholder="name (e.g. school)" style={{ maxWidth: 140 }} />
+        <input type="password" autoComplete="off" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder="calendar address (iCal)" />
+        <button className="btn tiny" disabled={!f.url.trim() || !f.tag.trim()}>
+          add
+        </button>
+      </form>
+    </div>
+  )
+}
+
+const PACKS: [Pack, string, string][] = [
+  ['cozy', 'cozy', 'little instruments: a wooden marimba, glass bells, soft thumps and air'],
+  ['classic', 'classic', 'the first sounds: plain soft blips'],
+]
+
+/** Which sounds the desk makes. Picking one plays a sample of it. */
+function SoundPicker() {
+  const fx = useFx()
+  const [pack, setPack] = useState(soundPack())
+  return (
+    <div className="sound-pick">
+      <div className="field-label">sounds</div>
+      <div className="chips">
+        {PACKS.map(([key, label, about]) => (
+          <button
+            key={key}
+            className={`chip ${pack === key ? 'on' : ''}`}
+            title={about}
+            onClick={() => {
+              setSoundPack(key)
+              setPack(key)
+              fx.sound('check')
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
     </div>
   )
