@@ -52,3 +52,16 @@ def test_github_status_maps_rows(monkeypatch):
     )
     monkeypatch.setattr(github.shutil, "which", lambda _: None)
     assert "gh" in github.status(refresh=True)["error"]
+
+
+def test_github_errors_never_crash(monkeypatch):
+    class P:
+        returncode, stdout, stderr = (
+            1,
+            json.dumps({"data": None, "errors": [{"message": "SAML"}]}),
+            "SAML enforcement",
+        )
+
+    monkeypatch.setattr(github.shutil, "which", lambda _: "/usr/bin/gh")
+    monkeypatch.setattr(github.subprocess, "run", lambda *a, **k: P())
+    assert "SAML" in github.status(refresh=True)["error"]

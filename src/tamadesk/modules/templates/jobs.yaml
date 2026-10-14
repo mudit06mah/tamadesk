@@ -1,0 +1,55 @@
+title: Job hunt
+blurb: Openings straight from the companies, found by search and then read from their own job
+  boards, checked to be open, and screened against what you want.
+icon: target
+params:
+  role:
+    label: Roles (comma separated)
+    default: product designer, ui designer, ux designer
+    from: roles
+  level:
+    label: Level (internship, junior, mid, senior; blank for any)
+    default: ''
+    from: level
+  location:
+    label: Where (optional, e.g. remote, Berlin, India)
+    default: ''
+    from: location
+  companies:
+    label: Companies to watch (optional, comma separated)
+    default: ''
+module:
+  name: Jobs
+  icon: target
+  every: daily 09:00
+  sources:
+  - type: job_search
+    roles: ${role}
+    level: ${level}
+    location: ${location}
+  - type: hn_jobs
+    query: ${role}
+  - type: company_jobs
+    companies: ${companies}
+    query: ${role}
+  watch_boards: true
+  verify: true
+  max_age_days: 60
+  screen: true
+  fit:
+    level: ${level}
+    roles: ${role}
+  actions:
+  - save
+  - skip
+  - open
+  - draft
+  - todo
+  workflows:
+  - label: Draft applications
+    prompt: For each job below, research the company briefly and draft a short, specific
+      application email in Mail in my voice (use my resume via read_doc). Use the
+      hiring email from the posting when listed; otherwise say where to apply.
+  - label: Plan my applications
+    prompt: Make a todo to apply to each job below, with the apply link, most promising
+      first.

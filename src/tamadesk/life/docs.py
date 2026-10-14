@@ -8,17 +8,19 @@ import sqlite3
 
 from pypdf import PdfReader
 
-KINDS = ("resume", "product", "notes", "other")
+KINDS = ("resume", "product", "notes", "other", "note")
 MAX_CHARS = 60_000
 
 
 def extract(name: str, data: bytes) -> str:
+    """The text of an uploaded file (PDF or plain text)."""
     if name.lower().endswith(".pdf"):
         return "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(data)).pages).strip()
     return data.decode("utf-8", "replace").strip()
 
 
 def add(conn: sqlite3.Connection, name: str, kind: str, data_b64: str) -> int:
+    """Store an uploaded document's text. Raises ValueError if there's no text in it (a scanned PDF)."""
     text = extract(name, base64.b64decode(data_b64))
     if len(text) < 20:
         raise ValueError("couldn't read any text from that file (scanned PDFs aren't supported yet)")
@@ -26,7 +28,20 @@ def add(conn: sqlite3.Connection, name: str, kind: str, data_b64: str) -> int:
                         (name[:120], kind if kind in KINDS else "other", text[:MAX_CHARS])).lastrowid  # fmt: skip
 
 
+def save_note(conn: sqlite3.Connection, title: str, text: str) -> int:
+    """A note written by the assistant (blog draft, study notes, comparison). Same title = new version."""
+    title = title.strip()[:120] or "untitled"
+    row = conn.execute("SELECT id FROM docs WHERE kind = 'note' AND name = ?", (title,)).fetchone()
+    if row:
+        conn.execute("UPDATE docs SET text = ? WHERE id = ?", (text[:MAX_CHARS], row["id"]))
+        return row["id"]
+    return conn.execute(
+        "INSERT INTO docs (name, kind, text) VALUES (?, 'note', ?)", (title, text[:MAX_CHARS])
+    ).lastrowid
+
+
 def listing(conn: sqlite3.Connection) -> list[dict]:
+    """Every document without its text: id, name, kind, size."""
     return [
         dict(r)
         for r in conn.execute(
@@ -36,6 +51,7 @@ def listing(conn: sqlite3.Connection) -> list[dict]:
 
 
 def read(conn: sqlite3.Connection, ref: str) -> str | None:
+    """A document's text by id, name or kind (the newest wins), or None."""
     row = conn.execute("SELECT text FROM docs WHERE CAST(id AS TEXT) = ? OR name = ? OR kind = ? ORDER BY id DESC",
                        (str(ref), ref, ref)).fetchone()  # fmt: skip
     return row["text"] if row else None

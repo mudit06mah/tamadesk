@@ -12,17 +12,24 @@ import json
 import re
 import shutil
 import subprocess
+import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
+from functools import lru_cache
 from html import unescape
+from urllib.parse import parse_qs, urlparse
 
 from tamadesk.core.net import get_json, get_text
+from tamadesk.modules import youtube
 
 
 @dataclass
 class Item:
+    """One thing a source found. `ext_id` dedupes it within a tab; `data` carries what its next action needs."""
+
     ext_id: str
     title: str
     url: str = ""
@@ -36,6 +43,8 @@ SOURCES: dict[str, Callable[..., list[Item]]] = {}
 
 
 def source(name: str):
+    """Register a fetch function under a source type name (the `type` in a tab's YAML)."""
+
     def reg(fn):
         SOURCES[name] = fn
         return fn
@@ -44,17 +53,20 @@ def source(name: str):
 
 
 def clean(s: str, n: int = 600) -> str:
+    """Plain text from HTML or messy text, cut to `n` characters."""
     s = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", unescape(s or ""))).strip()
     return s if len(s) <= n else s[: n - 1].rsplit(" ", 1)[0] + "…"
 
 
 def uid(*parts: str) -> str:
+    """A short stable id from the given parts."""
     return hashlib.sha1("|".join(parts).encode()).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------- feeds (RSS 2.0 + Atom)
 
 ATOM = "{http://www.w3.org/2005/Atom}"
+MEDIA = "{http://search.yahoo.com/mrss/}"  # YouTube puts video descriptions here
 
 
 def _text(e: ET.Element, tag: str) -> str:
@@ -62,6 +74,16 @@ def _text(e: ET.Element, tag: str) -> str:
     if el is None:
         el = e.find(ATOM + tag)
     return (el.text or "") if el is not None else ""
+
+
+def _iso(when: str) -> str:
+    """A feed's date as ISO 8601: Atom already is; RSS's 'Sun, 11 Oct 2026 00:57:36 GMT' is converted."""
+    if not when or when[:4].isdigit():
+        return when
+    try:
+        return parsedate_to_datetime(when).isoformat()
+    except (TypeError, ValueError):
+        return ""
 
 
 def parse_feed(xml: str, limit: int = 30) -> list[Item]:
@@ -75,22 +97,89 @@ def parse_feed(xml: str, limit: int = 30) -> list[Item]:
             link = el.get("href", "")
         authors = [clean(a.findtext(f"{ATOM}name") or "") for a in e.findall(f"{ATOM}author")]
         title = clean(t("title"), 200)
+        body = t("description") or t("summary") or t("content") or e.findtext(f".//{MEDIA}description") or ""
+        data = {}
+        if youtube.VIDEO.search(link):  # a channel feed: say what the video is, not the channel's promo
+            body = youtube.blurb(body)
+            stats = e.find(f".//{MEDIA}statistics")
+            data = {"views": int(stats.get("views") or 0)} if stats is not None else {}
+            if data.get("views"):  # "3Blue1Brown · 6.3M views"
+                authors = [" · ".join([*authors[:1], f"{youtube.views_text(data['views'])} views"])]
         out.append(Item(
             ext_id=uid(t("guid") or t("id") or link or title), title=title, url=link.strip(),
             subtitle=", ".join(authors[:4]) + (" et al." if len(authors) > 4 else "") or clean(t("author"), 80),
-            body=clean(t("description") or t("summary") or t("content")),
-            published=(t("pubDate") or t("published") or t("updated")).strip(),
+            body=clean(body), published=_iso((t("pubDate") or t("published") or t("updated")).strip()), data=data,
         ))  # fmt: skip
+    return out
+
+
+def _video(v: dict, **data) -> Item:
+    return Item(ext_id=f"yt{v['id']}", title=clean(v["title"], 200), url=f"https://www.youtube.com/watch?v={v['id']}",
+                subtitle=youtube.subtitle(v), body=youtube.blurb(v["description"]),
+                data={"thumb": youtube.thumb(v["id"]), "duration": v["duration"], "views": v["views"]} | data)  # fmt: skip
+
+
+@source("news")
+def news(query: str, limit: int = 30, market: str = "") -> list[Item]:
+    """News articles about a topic from Bing News' public RSS (no key, no login), linking to the
+    publisher's own page. Several words narrow it ("Starlink India"); quotes keep a phrase together.
+    market: e.g. en-in for news from India, '' for the default."""
+    params = {"q": query, "format": "rss"} | ({"mkt": market} if market else {})
+    root = ET.fromstring(get_text("https://www.bing.com/news/search", params=params))
+    out = []
+    for e in root.findall(".//item")[:limit]:
+        link = e.findtext("link") or ""
+        original = parse_qs(urlparse(link).query).get("url", [link])[0]  # Bing's click-through -> the article
+        src = next((c.text for c in e if c.tag.endswith("}Source")), "") or ""
+        img = next((c.text for c in e if c.tag.endswith("}Image")), "") or ""
+        out.append(Item(
+            ext_id=uid(original), title=clean(e.findtext("title") or "", 200), url=original,
+            subtitle=clean(src.removesuffix(" on MSN"), 80), body=clean(e.findtext("description") or ""),
+            published=_iso(e.findtext("pubDate") or ""), data={"thumb": f"{img}&w=320&h=180&c=14"} if img else {},
+        ))  # fmt: skip
+    return out
+
+
+@source("youtube")
+def youtube_search(query: str, limit: int = 10) -> list[Item]:
+    """YouTube search (yt-dlp, no login): videos with channel, length, views and a clean description.
+    Shorts are left out."""
+    return [_video(v) for v in youtube.search(query, limit) if not 0 < v["duration"] < 90]
+
+
+@source("roadmap")
+def roadmap(subject: str, topics: str, per_topic: int = 3) -> list[Item]:
+    """A learning path: for each topic, in order, the best few videos (on-topic, explainer length, well
+    watched). topics: one per line or comma separated, in the order to learn them."""
+    names = [x.strip(" -•*\t0123456789.)") for x in re.split(r"\n|,|;", topics)]
+    out = []
+    for step, topic in enumerate((x for x in names if x), start=1):
+        found = youtube.search(
+            f"{topic} {subject}".strip() if subject.lower() not in topic.lower() else topic, 12
+        )
+        for v in youtube.pick(found, topic, per_topic):
+            if not youtube.blurb(v["description"]):  # search gives a snippet; the page has the rest
+                try:
+                    v = v | {
+                        "description": (
+                            youtube.details(f"https://www.youtube.com/watch?v={v['id']}") or {}
+                        ).get("description", "")
+                    }
+                except (RuntimeError, OSError, ValueError, subprocess.TimeoutExpired):
+                    pass
+            out.append(_video(v, step=step, topic=topic))
     return out
 
 
 @source("rss")
 def rss(url: str, limit: int = 30) -> list[Item]:
+    """Any RSS or Atom feed."""
     return parse_feed(get_text(url), limit)
 
 
 @source("arxiv")
 def arxiv(query: str, limit: int = 20) -> list[Item]:
+    """Newest arXiv papers on comma-separated topics."""
     topics = [w.strip() for w in query.split(",") if w.strip()]
     q = " OR ".join(f'all:"{w}"' if " " in w else f"all:{w}" for w in topics)
     xml = get_text("https://export.arxiv.org/api/query", params={
@@ -102,17 +191,30 @@ def arxiv(query: str, limit: int = 20) -> list[Item]:
 # ---------------------------------------------------------------- JSON APIs
 
 
+# a topic search means these words, in the story itself: no typo matches ("Starling"), no hits on a URL
+EXACT = {"typoTolerance": "false", "restrictSearchableAttributes": "title,story_text"}
+
+
 @source("hn")
-def hn(query: str = "", min_points: int = 30, limit: int = 30) -> list[Item]:
-    """Hacker News stories (Algolia API). No query = what's hot on the front page."""
-    params = {"tags": "story", "hitsPerPage": limit, "numericFilters": f"points>{min_points}"}
-    url = "https://hn.algolia.com/api/v1/search_by_date" if query else "https://hn.algolia.com/api/v1/search"
-    if query:
-        # comma-separated topics: any of them may match
-        params |= {"query": query.replace(",", " "), "optionalWords": query.replace(",", " ")}
+def hn(query: str = "", min_points: int = 30, limit: int = 30, tags: str = "story") -> list[Item]:
+    """Hacker News (Algolia API). No query = the front page. tags: story | show_hn | ask_hn.
+    Comma-separated topics are searched one by one; every word of a topic must be in the story
+    ("Starlink India" never brings back any story that just says "India").
+    Use min_points 0 to catch brand-new posts (e.g. watching for your own launch)."""
+    params = {"tags": tags, "hitsPerPage": limit, "numericFilters": f"points>={min_points}"}
+    if not query:
+        hits = get_json("https://hn.algolia.com/api/v1/search", params=params | {"tags": "front_page"})[
+            "hits"
+        ]
     else:
-        params["tags"] = "front_page"
-    hits = get_json(url, params=params)["hits"]
+        hits, ids = [], set()
+        for topic in (x.strip() for x in query.split(",") if x.strip()):
+            for h in get_json(
+                "https://hn.algolia.com/api/v1/search_by_date", params=params | {"query": topic, **EXACT}
+            )["hits"]:
+                if h["objectID"] not in ids:
+                    ids.add(h["objectID"])
+                    hits.append(h)
     return [Item(
         ext_id=f"hn{h['objectID']}", title=clean(h.get("title") or "", 200),
         url=h.get("url") or f"https://news.ycombinator.com/item?id={h['objectID']}",
@@ -120,6 +222,18 @@ def hn(query: str = "", min_points: int = 30, limit: int = 30) -> list[Item]:
         body=clean(h.get("story_text") or ""), published=h.get("created_at", ""),
         data={"discussion": f"https://news.ycombinator.com/item?id={h['objectID']}"},
     ) for h in hits if h.get("title")]  # fmt: skip
+
+
+@lru_cache(maxsize=1)
+def _gh_token() -> str:
+    if not shutil.which("gh"):
+        return ""
+    p = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=10, check=False)
+    return p.stdout.strip() if p.returncode == 0 else ""
+
+
+def _gh_headers() -> dict:
+    return {"Authorization": f"Bearer {t}"} if (t := _gh_token()) else {}
 
 
 @source("github")
@@ -131,7 +245,7 @@ def github(query: str, days: int = 30, limit: int = 20) -> list[Item]:
     for q in re.split(r"\s+OR\s+", query)[:4]:
         data = get_json("https://api.github.com/search/repositories", params={
             "q": f"{q} created:>{since}", "sort": "stars", "order": "desc", "per_page": limit,
-        })  # fmt: skip
+        }, headers=_gh_headers())  # fmt: skip
         seen |= {r["id"]: r for r in data.get("items", []) if r["id"] not in seen}
     repos = sorted(seen.values(), key=lambda r: -r["stargazers_count"])[:limit]
     return [Item(
@@ -142,17 +256,93 @@ def github(query: str, days: int = 30, limit: int = 20) -> list[Item]:
     ) for r in repos]  # fmt: skip
 
 
+def _starred(limit: int) -> list[str]:
+    data = get_json("https://api.github.com/user/starred", params={"per_page": limit, "sort": "updated"},
+                    headers=_gh_headers())  # fmt: skip
+    return [r["full_name"] for r in data] if isinstance(data, list) else []
+
+
+@source("releases")
+def releases(repos: str, limit: int = 20) -> list[Item]:
+    """New releases of many repos in one source: 'owner/a, owner/b' or 'starred' (your GitHub stars,
+    via your gh login). Uses each repo's public releases.atom feed."""
+    names = _starred(30) if repos.strip() == "starred" else [r.strip() for r in repos.split(",") if r.strip()]
+    out: list[Item] = []
+    for name in names[:30]:
+        try:
+            feed = parse_feed(get_text(f"https://github.com/{name}/releases.atom"), 3)
+        except Exception:  # noqa: BLE001, S112 - a repo without releases (or renamed) just has none
+            continue
+        out += [Item(ext_id=i.ext_id, title=f"{name.split('/')[-1]} {i.title}", url=i.url, subtitle=name,
+                     body=i.body, published=i.published) for i in feed]  # fmt: skip
+    return sorted(out, key=lambda i: i.published, reverse=True)[:limit]
+
+
+@source("github_issues")
+def github_issues(query: str, days: int = 14, limit: int = 20) -> list[Item]:
+    """Open issues/PRs from GitHub search, updated recently. e.g. 'label:"good first issue" language:rust'
+    or 'repo:me/mylib no:label' for triage. OR between alternatives is allowed."""
+    since = (datetime.now(UTC) - timedelta(days=days)).date().isoformat()
+    seen: dict[int, dict] = {}
+    for q in re.split(r"\s+OR\s+", query)[:4]:
+        data = get_json("https://api.github.com/search/issues", params={
+            "q": f"{q} is:open updated:>{since}", "sort": "updated", "order": "desc", "per_page": limit,
+        }, headers=_gh_headers())  # fmt: skip
+        seen |= {i["id"]: i for i in data.get("items", []) if i["id"] not in seen}
+    return [Item(
+        ext_id=f"ghi{i['id']}", title=i["title"], url=i["html_url"],
+        subtitle=f"{i['repository_url'].split('repos/')[-1]}#{i['number']} · " + ", ".join(l["name"] for l in i.get("labels", [])[:3]),
+        body=clean(i.get("body") or "", 300), published=i.get("updated_at", ""),
+    ) for i in list(seen.values())[:limit]]  # fmt: skip
+
+
+def repo_info(repo: str) -> dict:
+    """Health of one public repo: stars, last push, open issues, license, archived, latest release."""
+    h = _gh_headers()
+    r = get_json(f"https://api.github.com/repos/{repo}", headers=h)
+    try:
+        rel = get_json(f"https://api.github.com/repos/{repo}/releases/latest", headers=h)
+    except Exception:  # noqa: BLE001 - no releases is a normal answer
+        rel = {}
+    return {"repo": r["full_name"], "description": r.get("description"), "stars": r["stargazers_count"],
+            "forks": r["forks_count"], "open_issues": r["open_issues_count"], "pushed_at": r["pushed_at"],
+            "created_at": r["created_at"], "license": (r.get("license") or {}).get("spdx_id"),
+            "archived": r["archived"], "language": r.get("language"), "topics": r.get("topics", []),
+            "latest_release": {"tag": rel.get("tag_name"), "at": rel.get("published_at")} if rel else None}  # fmt: skip
+
+
 # ---------------------------------------------------------------- agent-reach (login-free channels)
 
 
 def agent_reach_ready() -> bool:
+    """Is agent-reach's mcporter installed (for Exa search)?"""
     return shutil.which("mcporter") is not None
 
 
+# results from these are login walls or re-posts of someone else's page: never useful as an item
+WALLED = ("linkedin.com", "facebook.com", "instagram.com", "x.com", "twitter.com", "indeed.", "glassdoor.",
+          "ziprecruiter.", "pinterest.", "quora.com")  # fmt: skip
+
+
+def _host(url: str) -> str:
+    return re.sub(r"^www\.", "", url.split("/")[2]) if url.count("/") >= 2 else ""
+
+
 @source("exa")
-def exa(query: str, limit: int = 10, objective: str = "") -> list[Item]:
+def exa(query: str, limit: int = 10, objective: str = "", exclude: str = "") -> list[Item]:
     """Exa semantic web search through agent-reach's mcporter config (free, no key, no login).
-    Good for things without a feed: companies, people's blogs, niche news."""
+    Good for things without a feed: companies, people's blogs, niche news. Login-walled sites and job
+    aggregators are always dropped; `exclude` adds more hosts (comma separated)."""
+    items = _exa_retry(query, limit + 5, objective)
+    blocked = WALLED + tuple(h.strip() for h in exclude.split(",") if h.strip())
+    items = [i for i in items if not any(b in _host(i.url) for b in blocked)][:limit]
+    for i in items:  # a careers page or ATS posting is itself the place to apply
+        if APPLY_RE.search(i.url):
+            i.data["apply_url"] = i.url
+    return items
+
+
+def _exa(query: str, limit: int, objective: str) -> list[Item]:
     if not agent_reach_ready():
         raise RuntimeError(
             "web search needs agent-reach's mcporter, which isn't on tamadesk's PATH. Install it "
@@ -170,7 +360,18 @@ def exa(query: str, limit: int = 10, objective: str = "") -> list[Item]:
     return parse_exa(text)
 
 
+def _exa_retry(query: str, limit: int, objective: str, tries: int = 3) -> list[Item]:
+    """The free Exa endpoint sometimes answers a good query with nothing (about 1 in 8, measured);
+    an empty answer is retried, so a refresh never silently comes back empty."""
+    for attempt in range(tries):
+        if items := _exa(query, limit, objective):
+            return items
+        time.sleep(1.5 * (attempt + 1))
+    return []
+
+
 def parse_exa(text: str) -> list[Item]:
+    """Items from Exa's text answer (Title/URL/Text blocks)."""
     out = []
     for block in re.split(r"\n---\n", text):
         title, url = (
@@ -181,11 +382,222 @@ def parse_exa(text: str) -> list[Item]:
             continue
         date = re.search(r"^Published:\s*(\S+)", block, re.MULTILINE)
         body = block.split("Highlights:", 1)[-1] if "Highlights:" in block else ""
-        host = re.sub(r"^www\.", "", url[1].split("/")[2]) if url[1].count("/") >= 2 else ""
-        out.append(Item(ext_id=uid(url[1]), title=clean(title[1], 200), url=url[1], subtitle=host,
+        out.append(Item(ext_id=uid(url[1]), title=clean(title[1], 200), url=url[1], subtitle=_host(url[1]),
                         body=clean(re.sub(r"[#*\[\]|]|-{3,}", " ", body)),
                         published=date[1] if date and date[1] != "N/A" else ""))  # fmt: skip
     return out
+
+
+# ---------------------------------------------------------------- jobs, straight from the companies
+
+EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+APPLY_RE = re.compile(
+    r"career|jobs?\b|apply|hiring|ashbyhq|greenhouse|lever\.co|workable|join", re.IGNORECASE
+)
+
+
+def parse_hiring(hit: dict) -> Item | None:
+    """One 'Who is hiring?' comment -> a job: headline, the company's own apply link, a published email."""
+    html = unescape(hit.get("comment_text") or "")
+    if not html:
+        return None
+    head = clean(html.split("<p>", 1)[0], 160)
+    links = [u for u in re.findall(r'href="([^"]+)"', html) if "ycombinator.com" not in u]
+    apply = next((u for u in links if APPLY_RE.search(u)), links[0] if links else "")
+    text = clean(html, 2000)
+    email = next((e for e in EMAIL_RE.findall(text) if not e.lower().startswith(("noreply", "no-reply"))), "")
+    post = f"https://news.ycombinator.com/item?id={hit['objectID']}"
+    return Item(
+        ext_id=f"hnj{hit['objectID']}", title=head, url=apply or post, subtitle=f"{head.split('|')[0].strip()[:40]} · HN hiring",
+        body=clean(html.split("<p>", 1)[-1], 500), published=hit.get("created_at", ""),
+        data={"apply_url": apply, "email": email, "email_source": post if email else "", "discussion": post,
+              "company": head.split("|")[0].strip()},
+    )  # fmt: skip
+
+
+def _role_line(title: str) -> str:
+    """'Company | Role | Location | …' -> just the first fields (descriptions mention everything)."""
+    parts = title.split("|")
+    return " ".join(parts[:3]).lower() if len(parts) > 2 else title[:120].lower()
+
+
+@source("hn_jobs")
+def hn_jobs(query: str, limit: int = 25, remote: bool = False) -> list[Item]:
+    """This month's Hacker News 'Who is hiring?' posts matching the query. Posted by the companies
+    themselves, usually with a direct apply link and sometimes a hiring email."""
+    stories = get_json("https://hn.algolia.com/api/v1/search_by_date",
+                       params={"tags": "story,author_whoishiring", "hitsPerPage": 6})["hits"]  # fmt: skip
+    thread = next((h for h in stories if "who is hiring" in h["title"].lower()), None)
+    if thread is None:
+        return []
+    # one precise query per comma-separated phrase (all its words required), then merged
+    phrases = [re.findall(r"\w+", p.lower()) for p in query.split(",") if p.strip()][:6]
+    hits: dict[str, dict] = {}
+    for words in phrases:
+        for h in get_json("https://hn.algolia.com/api/v1/search", params={
+            "tags": f"comment,story_{thread['objectID']}", "query": " ".join(words), "hitsPerPage": 60,
+        })["hits"]:  # fmt: skip
+            hits.setdefault(h["objectID"], h)
+    jobs = [i for h in hits.values() if (i := parse_hiring(h))]
+    jobs = [
+        i for i in jobs if not re.search(r"(?i)location:|willing to relocate|seeking work", i.title)
+    ]  # seekers
+    # Algolia matches anywhere in a long post: keep the ones whose role line is actually about it
+    jobs = [
+        i
+        for i in jobs
+        if any(all(re.search(rf"\b{re.escape(w)}", _role_line(i.title)) for w in p) for p in phrases)
+    ]
+    return [i for i in jobs if not remote or "remote" in f"{i.title} {i.body}".lower()]
+
+
+def _ms(v) -> str:
+    return datetime.fromtimestamp(v / 1000, UTC).isoformat() if isinstance(v, (int, float)) else str(v or "")
+
+
+# each company job system: its public list URL, and how to read one posting -> {title, url, location, posted}
+BOARDS: dict[str, tuple[str, Callable[[dict, str], dict]]] = {
+    "ashby": ("https://api.ashbyhq.com/posting-api/job-board/{slug}", lambda j, s: {
+        "title": j["title"], "url": j.get("applyUrl") or j.get("jobUrl"), "location": j.get("location", ""),
+        "posted": j.get("publishedAt", ""), "remote": j.get("isRemote")}),
+    "greenhouse": ("https://boards-api.greenhouse.io/v1/boards/{slug}/jobs", lambda j, s: {
+        "title": j["title"], "url": j["absolute_url"], "location": (j.get("location") or {}).get("name", ""),
+        "posted": j.get("first_published") or j.get("updated_at", "")}),
+    "lever": ("https://api.lever.co/v0/postings/{slug}?mode=json", lambda j, s: {
+        "title": j["text"], "url": j.get("hostedUrl") or j.get("applyUrl"),
+        "location": (j.get("categories") or {}).get("location", ""), "posted": _ms(j.get("createdAt"))}),
+    "workable": ("https://apply.workable.com/api/v1/widget/accounts/{slug}", lambda j, s: {
+        "title": j["title"], "url": j.get("url") or j.get("application_url") or f"https://apply.workable.com/{s}/j/{j.get('shortcode')}/",
+        "location": ", ".join(x for x in (j.get("city"), j.get("country")) if x), "posted": j.get("created_at", ""),
+        "remote": j.get("telecommuting")}),
+    "recruitee": ("https://{slug}.recruitee.com/api/offers/", lambda j, s: {
+        "title": j["title"], "url": j.get("careers_url") or j.get("careers_apply_url"),
+        "location": ", ".join(x for x in (j.get("city"), j.get("country")) if x), "posted": j.get("created_at", ""),
+        "remote": j.get("remote")}),
+    "smartrecruiters": ("https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100", lambda j, s: {
+        "title": j["name"], "url": f"https://jobs.smartrecruiters.com/{s}/{j['id']}",
+        "location": ", ".join(x for x in ((j.get("location") or {}).get("city"), (j.get("location") or {}).get("country")) if x),
+        "posted": j.get("releasedDate", ""), "remote": (j.get("location") or {}).get("remote")}),
+}  # fmt: skip
+GUESSABLE = (
+    "ashby",
+    "greenhouse",
+    "lever",
+    "workable",
+    "recruitee",
+)  # SmartRecruiters ids are exact: learned only
+
+
+def _board(slug: str, ats: str | None = None) -> list[dict]:
+    """A company's open roles from its job system: [{title, url, location, posted}]. Without `ats`,
+    the guessable systems are tried in turn (a name like "linear" usually works)."""
+    for name in [ats] if ats else GUESSABLE:
+        url, read = BOARDS[name]
+        try:
+            data = get_json(url.format(slug=slug), timeout=12)
+        except Exception:  # noqa: BLE001, S112 - not on this system
+            continue
+        rows = (
+            data.get("jobs") or data.get("offers") or data.get("content") or []
+            if isinstance(data, dict)
+            else data
+        )
+        if not rows and not ats:
+            continue
+        return [r | {"ats": name} for j in rows if (r := read(j, slug)).get("url")]
+    return []
+
+
+@source("company_jobs")
+def company_jobs(companies: str, query: str = "", limit: int = 30) -> list[Item]:
+    """Open roles from companies' own job boards (Ashby, Greenhouse, Lever), each with its direct apply
+    link. companies: board names, comma separated (usually the company name, e.g. 'linear, vercel')."""
+    words = [w for w in re.findall(r"\w+", query.lower()) if len(w) > 2]
+    out: list[Item] = []
+    for name in [c.strip() for c in companies.split(",") if c.strip()][:40]:
+        ats, _, slug = name.rpartition(":")  # "greenhouse:acme" (learned) or just "acme" (typed)
+        if ats not in BOARDS:
+            ats, slug = "", re.sub(r"[^a-z0-9-]", "", name.lower().replace(" ", ""))
+        label = slug if ats else name
+        for j in _board(slug, ats or None):
+            if words and not any(w in j["title"].lower() for w in words):
+                continue
+            out.append(Item(ext_id=uid(j["url"]), title=f"{j['title']} at {label}", url=j["url"],
+                            subtitle=f"{label} · {j['location'] or 'location n/a'}", published=j.get("posted") or "",
+                            data={"apply_url": j["url"], "company": label, "board": f"{j['ats']}:{slug}",
+                                  "live": "open", "remote": j.get("remote")}))  # fmt: skip
+    return out[:limit]
+
+
+@source("job_search")
+def job_search(roles: str, level: str = "", location: str = "", limit: int = 30) -> list[Item]:
+    """Job postings found by web search, several narrow queries (one per role), kept only when they're
+    the original posting on the company's careers page or job system. Each result's job system is
+    remembered, so the tab can watch that company's whole board. roles: comma separated."""
+    from tamadesk.modules import fit as fitting
+    from tamadesk.modules import postings
+
+    f = fitting.Fit(level=level or None, roles=roles)
+    out: list[Item] = []
+    for q in postings.queries(f, f.roles, location):
+        for it in _exa_retry(q, 10, postings.OBJECTIVE):
+            if not postings.original(it.url):
+                continue  # boards, aggregators and career centres: never the source
+            it.data["apply_url"] = it.url
+            if board := postings.board_of(it.url):
+                it.data["board"] = f"{board[0]}:{board[1]}"
+                it.data.setdefault("company", board[1])
+            elif "gh_jid=" in it.url:  # a careers page powered by Greenhouse: learn its board if it answers
+                slug = postings.host(it.url).split(".")[-2]
+                if _board(slug, "greenhouse"):
+                    it.data["board"] = f"greenhouse:{slug}"
+                    it.data.setdefault("company", slug)
+            out.append(it)
+    seen: set[str] = set()
+    return [i for i in out if not (i.url in seen or seen.add(i.url))][:limit]
+
+
+CFP_TOPICS = {"general", "accessibility", "android", "api", "blockchain", "cpp", "css", "data", "devops", "dotnet",
+              "elixir", "golang", "graphql", "ios", "iot", "java", "javascript", "kotlin", "leadership",
+              "networking", "opensource", "performance", "php", "product", "python", "ruby", "rust", "scala",
+              "security", "sre", "tech-comm", "testing", "typescript", "ux"}  # fmt: skip
+
+
+@source("cfp")
+def cfp(topics: str = "general", limit: int = 40) -> list[Item]:
+    """Conferences whose call for papers is still open, from the community-kept conference-data
+    repo on GitHub (free, no login). topics: comma separated, e.g. 'javascript, ux, devops'.
+    Each item carries its CFP deadline, so '+ todo' makes a todo that's due then."""
+    today = datetime.now(UTC).date().isoformat()
+    wanted = [t.strip().lower() for t in topics.split(",") if t.strip().lower() in CFP_TOPICS] or ["general"]
+    out: list[Item] = []
+    for year in (datetime.now(UTC).year, datetime.now(UTC).year + 1):
+        for topic in wanted[:6]:
+            try:
+                rows = get_json(f"https://raw.githubusercontent.com/tech-conferences/conference-data/main/conferences/"
+                                f"{year}/{topic}.json", timeout=15)  # fmt: skip
+            except Exception:  # noqa: BLE001, S112 - next year's file may not exist yet
+                continue
+            for c in rows:
+                closes = c.get("cfpEndDate") or ""
+                if closes < today or not (c.get("cfpUrl") or c.get("url")):
+                    continue
+                where = (
+                    "online"
+                    if c.get("online")
+                    else ", ".join(x for x in (c.get("city"), c.get("country")) if x)
+                )
+                out.append(Item(ext_id=uid(c.get("url", ""), closes), title=f"{c['name']}: CFP closes {closes}",
+                                url=c.get("cfpUrl") or c["url"], subtitle=f"{where} · {c.get('startDate', '')}",
+                                body=f"{c['name']} ({topic}) runs {c.get('startDate', '')} to {c.get('endDate', '')}.",
+                                published=closes, data={"deadline": closes, "event_url": c.get("url", "")}))  # fmt: skip
+    seen: set[str] = set()
+    unique = [
+        i
+        for i in sorted(out, key=lambda i: i.data["deadline"])
+        if not (i.ext_id in seen or seen.add(i.ext_id))
+    ]
+    return unique[:limit]
 
 
 @source("agent")
@@ -205,11 +617,38 @@ def agent(task: str, limit: int = 8) -> list[Item]:
     try:
         out = runner.structured(s, conn, f"Find up to {limit} fresh, specific results for this standing request, "
                                 f"using the search tool. Return only items, no commentary.\nRequest: {task}",
-                                schema, kind="agent_tab", budget=min(0.3, s.assistant.max_usd_per_ask))  # fmt: skip
+                                schema, kind="agent_tab", budget=min(0.3, s.assistant.max_usd_per_ask), read_only=True)  # fmt: skip
     finally:
         conn.close()
     return [Item(ext_id=uid(i["url"]), title=clean(i["title"], 200), url=i["url"], subtitle=i.get("subtitle", ""),
                  body=clean(i.get("body", ""))) for i in out["items"][:limit]]  # fmt: skip
+
+
+YOUTUBE = re.compile(r"(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)([\w-]{11})")
+
+
+def transcript(url: str, limit: int = 12000) -> str:
+    """A YouTube video's captions (yt-dlp, which agent-reach installs; no login). '' if unavailable."""
+    if not YOUTUBE.search(url) or not shutil.which("yt-dlp"):
+        return ""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run(["yt-dlp", "--skip-download", "--write-auto-subs", "--write-subs", "--sub-langs", "en.*,en",
+                        "--sub-format", "vtt", "-o", f"{tmp}/v", url],
+                       capture_output=True, timeout=90, check=False)  # fmt: skip
+        vtt = next(Path(tmp).glob("*.vtt"), None)
+        if vtt is None:
+            return ""
+        lines, seen = [], set()
+        for ln in vtt.read_text(errors="replace").splitlines():
+            ln = re.sub(r"<[^>]+>", "", ln).strip()
+            if not ln or "-->" in ln or ln.startswith(("WEBVTT", "Kind:", "Language:")) or ln in seen:
+                continue
+            seen.add(ln)  # auto captions repeat each line as it scrolls
+            lines.append(ln)
+        return " ".join(lines)[:limit]
 
 
 def read_page(url: str, limit: int = 6000) -> str:
@@ -218,5 +657,6 @@ def read_page(url: str, limit: int = 6000) -> str:
 
 
 def fetch(spec: dict) -> list[Item]:
+    """Run one source from its spec ({type, ...params})."""
     params = {k: v for k, v in spec.items() if k != "type"}
     return SOURCES[spec["type"]](**params)

@@ -5,7 +5,9 @@ import { api, ask, type ChatMsg, type Step, type Usage } from './api'
 import { useFx } from './fx/Fx'
 import type { Toast } from './util'
 
-export const FREE = /^\s*(todo\b|t:|\[\s?\]|remind\s+me\b|log\b|>)/i
+// the desk's instant, free shortcuts (life/capture.py VERBS; a test keeps the two in sync)
+export const FREE =
+  /^\s*(todo\b|t:|\[\s?\]|remind\s+me\b|log\b|>|done\b|finished\b|✓|move\b|push\b|snooze\b|postpone\b|waiting\s+(on|for)\b|meeting\b|mtg\b|call\b|meet\b|focus\b|(remove|delete|drop|cancel|stop)\s|(next|what'?s\s+next|what\s+now|now\s+what)\s*\??\s*$|\?\s*$)/i
 const SAVED = 'tamadesk-chat'
 
 type Ctx = {
@@ -17,6 +19,7 @@ type Ctx = {
   chats: { id: number; title: string; updated_at: string }[]
   usage: Usage | null
   send: (t: string) => Promise<void>
+  stop: () => void
   openChat: (id: number | null) => Promise<void>
   focusTick: number
   doneTick: number
@@ -41,6 +44,7 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
   const [focusTick, setFocusTick] = useState(0)
   const [doneTick, setDoneTick] = useState(0)
   const busy = useRef(false)
+  const runningChat = useRef<number | null>(null) // the chat whose answer is streaming (for stop)
 
   const loadMeta = useCallback(() => {
     void api.usage().then(setUsage)
@@ -77,9 +81,24 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
       setText('')
       if (FREE.test(t)) {
         // instant and free: handled by the desk, no AI involved
-        const r = await api.capture(t.replace(/^\s*(log\b|>)\s*/i, ''))
-        fx.sound('capture')
-        fx.float(document.querySelector('.ask-box'), r.kind === 'log' ? `+${r.xp} XP` : r.kind === 'todo' ? '+ todo' : 'reminder set')
+        const r = await api.capture(t.replace(/^\s*(log\b\s*:?|>)\s*/i, ''))
+        const box = document.querySelector('.ask-box')
+        if (r.kind === 'done') {
+          fx.sound('check')
+          fx.burstAt(box, !!r.milestone)
+          fx.float(box, `+${r.xp} XP`)
+          setDoneTick((n) => n + 1)
+          if (r.milestone) fx.banner({ kind: 'goal', title: `${r.chain} IN A ROW!`, sub: `${r.text}: the habit is sticking.` })
+        } else if (r.kind === 'focus') {
+          fx.sound('start')
+        } else if (r.kind === 'next') {
+          fx.sound('tap')
+        } else {
+          fx.sound('capture')
+          fx.float(box, r.xp ? `+${r.xp} XP` : r.kind === 'todo' ? '+ todo' : r.kind === 'meeting' ? '+ meeting' : r.kind === 'waiting' ? '+ waiting' : '✓')
+        }
+        if (r.no_time && r.kind !== 'move') notify("Couldn't find a time in that, so it's a todo. Try “in 10 minutes” or “at 6pm”.", 'err')
+        else if (r.message) notify(r.message, r.kind === 'move' && !r.id ? 'err' : 'ok')
         onChange()
         return
       }
@@ -93,6 +112,7 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
       try {
         await ask(t, chatId, (e) => {
           if (e.type === 'chat') {
+            runningChat.current = e.chat_id
             setChatId(e.chat_id)
             try {
               localStorage.setItem(SAVED, String(e.chat_id))
@@ -105,8 +125,8 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
             setLive({ text: liveText, steps: [...steps] })
           }
           if (e.type === 'tool') {
-            fx.sound('poke')
             steps.push({ name: e.name, input: e.input })
+            fx.sound('step', steps.length)
             setLive({ text: liveText, steps: [...steps] })
           }
           if (e.type === 'done') final = { role: 'assistant', text: e.text, cost_usd: e.cost_usd, tokens: e.tokens }
@@ -119,13 +139,18 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
       setMsgs((m) => [...m, { ...final, steps, text: final.text || liveText }])
       setLive(null)
       busy.current = false
-      fx.sound('send')
+      runningChat.current = null
+      fx.sound('arrive')
       setDoneTick((n) => n + 1)
       loadMeta()
       onChange()
     },
     [chatId, fx, onChange, loadMeta, notify],
   )
+
+  const stop = useCallback(() => {
+    if (runningChat.current) void api.stopAsk(runningChat.current).then(() => fx.sound('undo'))
+  }, [fx])
 
   // "ask Bolt" from anywhere: lead buttons, the new-tab dialog, the / key, Memory
   useEffect(() => {
@@ -143,6 +168,6 @@ export function AskProvider({ children, notify, onChange }: { children: ReactNod
   }, [send, openChat])
 
   return (
-    <AskCtx.Provider value={{ text, setText, msgs, live, chatId, chats, usage, send, openChat, focusTick, doneTick }}>{children}</AskCtx.Provider>
+    <AskCtx.Provider value={{ text, setText, msgs, live, chatId, chats, usage, send, stop, openChat, focusTick, doneTick }}>{children}</AskCtx.Provider>
   )
 }

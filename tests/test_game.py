@@ -1,6 +1,10 @@
 from datetime import date
 
-from tamadesk.life.game import level_for, streak
+from tamadesk.life.game import level_for, streak_with_freezes
+
+
+def streak(days, today):
+    return streak_with_freezes(days, today)[0]
 
 
 def test_levels():

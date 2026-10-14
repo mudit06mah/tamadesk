@@ -11,11 +11,12 @@ UA = {"User-Agent": "tamadesk/0.3 (+https://github.com/mudit06mah/tamadesk)"}
 
 
 class NetError(RuntimeError):
-    pass
+    """A request that failed; the message names the host, never the full URL (it may hold a secret)."""
 
 
 def fetch(url: str, *, params: dict | None = None, body: dict | None = None, timeout: float = 20,
           headers: dict | None = None, method: str | None = None) -> bytes:  # fmt: skip
+    """The one HTTP helper: GET (or POST a JSON body) with tamadesk's user agent; raises NetError."""
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
     req = urllib.request.Request(
@@ -32,8 +33,10 @@ def fetch(url: str, *, params: dict | None = None, body: dict | None = None, tim
 
 
 def get_json(url: str, **kw):
+    """fetch() and parse JSON."""
     return json.loads(fetch(url, **kw))
 
 
 def get_text(url: str, **kw) -> str:
+    """fetch() and decode as UTF-8 text."""
     return fetch(url, **kw).decode("utf-8", "replace")

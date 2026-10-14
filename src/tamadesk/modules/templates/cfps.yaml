@@ -1,0 +1,27 @@
+title: Talks to submit
+blurb: Conferences whose call for papers is still open, soonest deadline first. Each one can become a
+  todo that's due when the CFP closes.
+icon: pen
+params:
+  topics:
+    label: Topics (general, javascript, python, ux, devops, data, security, leadership, …)
+    default: general
+    from: interests
+module:
+  name: CFPs
+  icon: pen
+  every: daily 08:00
+  sources:
+  - type: cfp
+    topics: ${topics}
+  actions:
+  - save
+  - skip
+  - open
+  - todo
+  workflows:
+  - label: Draft talk abstracts
+    prompt: For each conference below, draft a 150-word talk abstract I could submit, based on what I
+      work on and my documents (read_doc). Save them together as one note.
+  - label: Plan my submissions
+    prompt: Make a todo to submit to each conference below, due the day its CFP closes, soonest first.

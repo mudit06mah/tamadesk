@@ -10,6 +10,8 @@ from tamadesk.core.net import NetError, get_json
 
 
 class OllamaBrain:
+    """A local Ollama model as a brain: offline and free, JSON output forced by the schema."""
+
     name = "Ollama"
 
     def __init__(self, s: Settings):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import yaml
 from fastapi import APIRouter, HTTPException
@@ -14,7 +15,7 @@ from tamadesk.brain import get_brain
 from tamadesk.core import db
 from tamadesk.core.config import get_settings
 from tamadesk.life.actions import add_todo
-from tamadesk.modules import engine, spec
+from tamadesk.modules import engine, rank, spec
 
 router = APIRouter(prefix="/api")
 
@@ -37,7 +38,18 @@ def _install(m: spec.Module) -> dict:
 
 def install_templates(picks: list[dict]) -> list[str]:
     """Used by New Game: [{template, params}] -> created tab ids."""
-    return [_install(spec.from_template(p["template"], p.get("params", {})))["id"] for p in picks]
+    about = _about()
+    return [
+        _install(spec.from_template(p["template"], p.get("params", {}), about=about))["id"] for p in picks
+    ]
+
+
+def _about() -> dict:
+    conn = db.connect(get_settings().db_path)
+    try:
+        return db.get_profile(conn, "about", {})
+    finally:
+        conn.close()
 
 
 @router.get("/modules")
@@ -45,8 +57,31 @@ def list_modules(conn: Conn) -> list[dict]:
     counts = {(r["module"], r["status"]): r["n"] for r in conn.execute(
         "SELECT module, status, count(*) AS n FROM items GROUP BY module, status")}  # fmt: skip
     runs = {r["module"]: dict(r) for r in conn.execute("SELECT * FROM module_runs")}
+    hidden = db.get_profile(conn, "dismissed_errors", {})
+    for r in runs.values():  # an error the user dismissed stays hidden until it changes
+        if r["last_error"] and hidden.get(r["module"]) == r["last_error"]:
+            r["last_error"] = None
+    fresh = {
+        r[0]: r[1]
+        for r in conn.execute("SELECT module, max(created_at) FROM items WHERE status = 'new' GROUP BY 1")
+    }
+    boards = {r[0]: r[1] for r in conn.execute("SELECT module, count(*) FROM boards GROUP BY module")}
     return [m.model_dump() | {"new": counts.get((m.id, "new"), 0), "saved": counts.get((m.id, "saved"), 0),
-                              "run": runs.get(m.id)} for m in spec.load_all(get_settings())]  # fmt: skip
+                              "boards": boards.get(m.id, 0), "passed": counts.get((m.id, "skipped"), 0),
+                              "taste": rank.taste(conn, m.id),
+                              "run": runs.get(m.id), "fresh_at": fresh.get(m.id)} for m in spec.load_all(get_settings())]  # fmt: skip
+
+
+@router.post("/modules/{module_id}/dismiss")
+def dismiss_error(module_id: str, conn: Conn) -> dict:
+    row = conn.execute("SELECT last_error FROM module_runs WHERE module = ?", (module_id,)).fetchone()
+    if row and row["last_error"]:
+        db.set_profile(
+            conn,
+            "dismissed_errors",
+            db.get_profile(conn, "dismissed_errors", {}) | {module_id: row["last_error"]},
+        )
+    return {"ok": True}
 
 
 @router.get("/templates")
@@ -64,7 +99,7 @@ class FromTemplate(BaseModel):
 @router.post("/modules")
 def create_module(body: FromTemplate) -> dict:
     try:
-        return _install(spec.from_template(body.template, body.params, body.name))
+        return _install(spec.from_template(body.template, body.params, body.name, about=_about()))
     except (ValueError, ValidationError) as e:
         raise HTTPException(422, str(e)) from e
 
@@ -97,10 +132,46 @@ def edit_module(module_id: str, body: YamlIn, conn: Conn) -> dict:
         m = spec.Module(**(yaml.safe_load(body.yaml) or {}) | {"id": module_id})
     except (yaml.YAMLError, ValidationError, TypeError) as e:
         raise HTTPException(422, str(e)) from e
+    return _replace(conn, m)
+
+
+@router.put("/modules/{module_id}/spec")
+def replace_spec(module_id: str, body: dict, conn: Conn) -> dict:
+    """A full module spec for an existing tab (the assistant's update_tab tool puts here)."""
+    _module_or_404(module_id)
+    try:
+        return _replace(conn, spec.Module(**body | {"id": module_id}))
+    except ValidationError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+class NameIn(BaseModel):
+    name: str
+
+
+@router.patch("/modules/{module_id}/name")
+def rename(module_id: str, b: NameIn) -> dict:
+    """Just the tab's name: nothing is refetched or re-ranked."""
+    old = _module_or_404(module_id)
+    try:
+        m = spec.Module(**old.model_dump() | {"name": b.name.strip()})
+    except ValidationError as e:
+        raise HTTPException(422, "a name is 1 to 24 characters") from e
+    spec.save(get_settings(), m)
+    return m.model_dump()
+
+
+def _replace(conn, m: spec.Module) -> dict:
+    """Save a changed tab: old errors are cleared, it's re-ranked, rescheduled and refreshed now."""
     s = get_settings()
+    old = spec.get(s, m.id)
     spec.save(s, m)
+    conn.execute("UPDATE module_runs SET last_error = NULL WHERE module = ?", (m.id,))
+    if old and old.sources != m.sources:  # new sources: refetch what's unseen (kept items stay)
+        conn.execute("DELETE FROM items WHERE module = ? AND status = 'new'", (m.id,))
     engine.rescore(conn, m)
     jobs.sync_modules(s)
+    jobs.run_now(m.id)
     return m.model_dump()
 
 
@@ -127,6 +198,14 @@ def _item_view(r) -> dict:
 
 @router.get("/modules/{module_id}/items")
 def items(module_id: str, conn: Conn, status: str = "new", offset: int = 0, limit: int = 30) -> dict:
+    """status new | saved | done | path (a steps tab: everything not thrown out, in order)."""
+    if status == "path":
+        rows = conn.execute(
+            """SELECT * FROM items WHERE module = ? AND status IN ('new', 'saved', 'done')
+               ORDER BY json_extract(data, '$.step'), score DESC, id LIMIT ? OFFSET ?""",
+            (module_id, limit + 1, offset),
+        ).fetchall()
+        return {"items": [_item_view(r) for r in rows[:limit]], "has_more": len(rows) > limit}
     order = "score DESC, id DESC" if status == "new" else "decided_at DESC"
     rows = conn.execute(
         f"SELECT * FROM items WHERE module = ? AND status = ? ORDER BY {order} LIMIT ? OFFSET ?",
@@ -135,29 +214,47 @@ def items(module_id: str, conn: Conn, status: str = "new", offset: int = 0, limi
     return {"items": [_item_view(r) for r in rows[:limit]], "has_more": len(rows) > limit}
 
 
-@router.get("/picks")
-def picks(conn: Conn, limit: int = 4) -> list[dict]:
-    """The best unseen items across all tabs, for Today. Only ones the ranker actually likes."""
-    names = {m.id: m.name for m in spec.load_all(get_settings())}
-    rows = conn.execute(
-        "SELECT * FROM items WHERE status = 'new' AND score > 0.5 ORDER BY score DESC, id DESC LIMIT ?",
-        (limit * 3,),
-    ).fetchall()
-    return [_item_view(r) | {"module_name": names[r["module"]]} for r in rows if r["module"] in names][:limit]
-
-
 class ActIn(BaseModel):
     reason: str = ""
 
 
+@router.get("/modules/{module_id}/boards")
+def watched_boards(module_id: str, conn: Conn) -> list[dict]:
+    """The company job boards this tab learned from search results, read on every refresh."""
+    return [dict(r) for r in conn.execute(
+        "SELECT board, found_from, added_at FROM boards WHERE module = ? ORDER BY added_at DESC", (module_id,))]  # fmt: skip
+
+
+@router.delete("/modules/{module_id}/boards/{board}")
+def forget_board(module_id: str, board: str, conn: Conn) -> dict:
+    conn.execute("DELETE FROM boards WHERE module = ? AND board = ?", (module_id, board))
+    return {"ok": True}
+
+
+@router.get("/items/{item_id}")
+def one_item(item_id: int, conn: Conn) -> dict:
+    """One item with its tab's actions, for a link or a row on Today that opens it in place."""
+    r = conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+    if r is None:
+        raise HTTPException(404, "no such item")
+    m = spec.get(get_settings(), r["module"])
+    return {"item": _item_view(r), "actions": m.actions if m else ["open"], "module": r["module"]}
+
+
 @router.post("/items/{item_id}/todo")
 def item_to_todo(item_id: int, conn: Conn) -> dict:
-    it = conn.execute("SELECT title, url FROM items WHERE id = ?", (item_id,)).fetchone()
+    it = conn.execute("SELECT title, url, data FROM items WHERE id = ?", (item_id,)).fetchone()
     if it is None:
         raise HTTPException(404, "no such item")
+    # an item with a deadline (a CFP, a job's closing date) makes a todo that's due then, 5pm local
+    deadline = json.loads(it["data"] or "{}").get("deadline")
+    due = None
+    if deadline:
+        local = datetime.fromisoformat(deadline[:10]).replace(hour=17).astimezone()
+        due = local.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
     with db.transaction(conn):
-        tid = add_todo(conn, f"{it['title'][:120]} {it['url'] or ''}".strip())
-    return {"todo_id": tid}
+        tid = add_todo(conn, f"{it['title'][:120]} {it['url'] or ''}".strip(), due)
+    return {"todo_id": tid, "due_at": due}
 
 
 @router.post("/items/{item_id}/summarize")

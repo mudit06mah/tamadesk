@@ -24,10 +24,12 @@ WORD = re.compile(r"[a-z][a-z0-9+#.-]{2,}")
 
 
 def words(text: str) -> set[str]:
+    """The meaningful words of a text, lowercased, without stop words."""
     return {w.strip(".-") for w in WORD.findall(text.lower())} - STOP
 
 
 def score(conn: sqlite3.Connection, module: str, text: str, interests: list[str]) -> tuple[float, list[str]]:
+    """(score, top reasons) for an item: learned word weights plus the tab's interests."""
     ws = words(text)
     if not ws:
         return 0.0, []
@@ -43,9 +45,20 @@ def score(conn: sqlite3.Connection, module: str, text: str, interests: list[str]
 
 
 def learn(conn: sqlite3.Connection, module: str, text: str, liked: bool) -> None:
+    """A bookmark (+1) or pass (-1) for each of the item's words."""
     col = "pos" if liked else "neg"
     conn.executemany(
         f"""INSERT INTO terms (module, term, {col}) VALUES (?, ?, 1)
             ON CONFLICT(module, term) DO UPDATE SET {col} = {col} + 1""",
         [(module, w) for w in words(text)],
     )
+
+
+def taste(conn: sqlite3.Connection, module: str, n: int = 3) -> dict:
+    """What the tab has learned, to show it: the words bookmarks and passes most agree on."""
+    rows = conn.execute(
+        "SELECT term, pos, neg FROM terms WHERE module = ? AND abs(pos - neg) >= 2", (module,)
+    ).fetchall()
+    lean = sorted(rows, key=lambda r: -abs(r["pos"] - r["neg"]))
+    return {"more": [r["term"] for r in lean if r["pos"] > r["neg"]][:n],
+            "less": [r["term"] for r in lean if r["neg"] > r["pos"]][:n]}  # fmt: skip

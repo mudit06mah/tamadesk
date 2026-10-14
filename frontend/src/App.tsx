@@ -1,27 +1,32 @@
+// The desk shell: the sidebar of pages and tabs, the companion, hotkeys (/ or t to ask, 1-9 to jump, Esc to
+// leave a text box), toasts, and whichever page is open.
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, askBolt, when, type Mod, type State } from './api'
 import { Companion, CompanionCtx } from './Companion'
 import { FxProvider, useFx } from './fx/Fx'
 import { play, setSound, soundOn } from './fx/sound'
-import { BrainIcon, CodeIcon, GearIcon, HomeIcon, MailIcon, ModIcon, PaletteIcon, PlusIcon } from './icons'
+import { BrainIcon, CodeIcon, PenIcon, GearIcon, HomeIcon, MailIcon, ModIcon, PaletteIcon, PlusIcon } from './icons'
 import { GitHub } from './GitHub'
 import { applyTheme, savedTheme } from './themes'
 import { ThemePicker } from './ThemePicker'
 import { AskProvider } from './AskStore'
 import { Memory } from './Memory'
+import { Notes } from './Notes'
 import { Mail } from './Mail'
 import { ModulePage } from './ModulePage'
 import { NewGame } from './NewGame'
 import { Settings } from './Settings'
 import { NewTabDialog } from './Templates'
+import { Tips } from './Tips'
 import { Today } from './Today'
 import { Dialog } from './ui'
 import { isTyping, type Toast } from './util'
 
-// fixed pages, plus one `m:<id>` page per module tab (between Today and Journal)
-export type Page = string
-const CORE: Page[] = ['today', 'mail', 'github', 'memory']
+// fixed pages, then one `m:<id>` page per tab, then Settings (keys 1-9 jump to them). A page can carry a
+// focus after a slash: `mail/d12` opens draft 12, `m:jobs/i4` opens item 4 (links from Today use these).
+type Page = string
+const CORE: Page[] = ['today', 'mail', 'notes', 'github', 'memory']
 const pagesFor = (mods: Mod[]): Page[] => [...CORE, ...mods.map((m) => `m:${m.id}`), 'settings']
 
 function remembered(key: string): number | null {
@@ -48,6 +53,7 @@ export default function App() {
     <CompanionCtx.Provider value={companion}>
       <FxProvider>
         <Shell state={state} setState={setState} />
+        <Tips />
       </FxProvider>
     </CompanionCtx.Provider>
   )
@@ -58,7 +64,15 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   const [page, setPage] = useState<Page>(() => location.hash.slice(1) || 'today')
   const [mods, setMods] = useState<Mod[]>([])
   const [newTab, setNewTab] = useState(false)
+  const [seenTabs, setSeenTabs] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('seen-tabs') ?? '{}') as Record<string, string>
+    } catch {
+      return {}
+    }
+  })
   const pages = pagesFor(mods)
+  const [base, focus = ''] = page.split('/')
   // an "ask Bolt" from another page: switch to Today (the conversation itself lives in AskProvider)
   const pageRef = useRef(page)
   pageRef.current = page
@@ -83,16 +97,38 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   const toastTimer = useRef<number | undefined>(undefined)
   const rung = useRef(new Set<number>())
 
+  // looking at a tab clears its sparkle (a per-browser convenience, so localStorage is fine)
+  useEffect(() => {
+    const id = page.split('/')[0]
+    if (!id.startsWith('m:')) return
+    const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mark the tab seen when you open it
+    setSeenTabs((m) => {
+      const next = { ...m, [id.slice(2)]: stamp }
+      try {
+        localStorage.setItem('seen-tabs', JSON.stringify(next))
+      } catch {
+        /* storage unavailable */
+      }
+      return next
+    })
+  }, [page])
+
   useEffect(() => {
     if (location.hash.slice(1) !== page) history.pushState(null, '', `${location.pathname}${location.search}#${page}`)
   }, [page])
 
   useEffect(() => {
     const onAsk = () => {
-      if (pageRef.current !== 'today') setPage('today')
+      if (pageRef.current.split('/')[0] !== 'today') setPage('today')
     }
+    const onNewTab = () => setNewTab(true)
     window.addEventListener('tamadesk:ask', onAsk)
-    return () => window.removeEventListener('tamadesk:ask', onAsk)
+    window.addEventListener('tamadesk:newtab', onNewTab)
+    return () => {
+      window.removeEventListener('tamadesk:ask', onAsk)
+      window.removeEventListener('tamadesk:newtab', onNewTab)
+    }
   }, [])
 
   useEffect(() => {
@@ -134,6 +170,12 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   }, [fx, setState])
 
   useEffect(() => {
+    const now = () => void refresh() // e.g. right after switching companions
+    window.addEventListener('tamadesk:refresh', now)
+    return () => window.removeEventListener('tamadesk:refresh', now)
+  }, [refresh])
+
+  useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch + polling
     void refresh()
     const t = setInterval(refresh, 10000)
@@ -147,14 +189,19 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
   }, [])
 
   const go = useCallback((p: Page) => {
-    play('tap')
+    play('click')
     setPage(p)
   }, [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Escape leaves a text box (after its own handlers ran), so / or t (back to typing) and 1-9 work again
+      if (e.key === 'Escape' && isTyping(e)) {
+        ;(e.target as HTMLElement).blur()
+        return
+      }
       if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return
-      if (e.key === '/') {
+      if (e.key === '/' || e.key === 't') {
         e.preventDefault()
         askBolt('')
         return
@@ -184,30 +231,40 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
 
   const ringing = state.reminders.filter((r) => r.status === 'fired')
   const name = state.companion?.name ?? 'buddy'
-  const mod = page.startsWith('m:') ? mods.find((m) => `m:${m.id}` === page) : undefined
+  const mod = base.startsWith('m:') ? mods.find((m) => `m:${m.id}` === base) : undefined
   const core: { id: Page; label: string; icon: React.ReactNode; count?: number }[] = [
-    { id: 'today', label: 'Today', icon: <HomeIcon />, count: state.today.open.length },
+    { id: 'today', label: 'Today', icon: <HomeIcon />, count: state.needs_you },
     { id: 'mail', label: 'Mail', icon: <MailIcon />, count: state.mail_drafts },
+    { id: 'notes', label: 'Notes', icon: <PenIcon /> },
     { id: 'github', label: 'GitHub', icon: <CodeIcon /> },
     { id: 'memory', label: 'Memory', icon: <BrainIcon /> },
   ]
-  const navRow = (t: { id: Page; label: string; icon: React.ReactNode; count?: number }, big = false) => {
+  const navRow = (t: { id: Page; label: string; icon: React.ReactNode; count?: number; fresh?: boolean }, big = false) => {
     const key = pages.indexOf(t.id) + 1
     return (
       <motion.button
         layout="position"
         key={t.id}
         id={`dock-${t.id}`}
-        className={`nav-row ${big ? 'big' : ''} ${page === t.id ? 'on' : ''}`}
+        className={`nav-row ${big ? 'big' : ''} ${base === t.id ? 'on' : ''}`}
         onClick={() => go(t.id)}
         whileTap={{ scale: 0.95 }}
         initial={{ opacity: 0, x: -12 }}
         animate={{ opacity: 1, x: 0 }}
       >
-        {page === t.id && <motion.span layoutId="nav-on" className="nav-glow" transition={{ type: 'spring', stiffness: 500, damping: 34 }} />}
+        {base === t.id && <motion.span layoutId="nav-on" className="nav-glow" transition={{ type: 'spring', stiffness: 500, damping: 34 }} />}
         <span className="nav-icon">{t.icon}</span>
         <span className="nav-label">{t.label}</span>
-        {!!t.count && <span className="nav-count">{t.count}</span>}
+        {!!t.count && (
+          <motion.span key={t.count} className="nav-count" initial={{ scale: 1.6 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 600, damping: 14 }}>
+            {t.count}
+          </motion.span>
+        )}
+        {t.fresh && base !== t.id && (
+          <motion.span className="nav-fresh" title="something new since you last looked" initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 12 }}>
+            ✦
+          </motion.span>
+        )}
         {key > 0 && key < 10 && <kbd className="nav-key">{key}</kbd>}
       </motion.button>
     )
@@ -240,7 +297,8 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
               Ask {name} to keep an eye on something, or press +
             </button>
           ) : (
-            mods.map((m) => navRow({ id: `m:${m.id}`, label: m.name, icon: <ModIcon name={m.icon} />, count: m.new }))
+            // a sparkle for "new since you looked", not a count of everything unread: tabs shouldn't feel like debt
+            mods.map((m) => navRow({ id: `m:${m.id}`, label: m.name, icon: <ModIcon name={m.icon} />, fresh: !!m.fresh_at && m.fresh_at > (seenTabs[m.id] ?? '') }))
           )}
         </nav>
 
@@ -264,7 +322,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
             >
               {sound ? '♪' : '×'}
             </button>
-            <button className={`mini ${page === 'settings' ? 'on' : ''}`} onClick={() => go('settings')} title="Settings" aria-label="Settings">
+            <button className={`mini ${base === 'settings' ? 'on' : ''}`} onClick={() => go('settings')} title="Settings" aria-label="Settings">
               <GearIcon />
             </button>
           </div>
@@ -274,7 +332,7 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
                 <ThemePicker
                   value={theme}
                   onPick={(t) => {
-                    play('tap')
+                    play('sparkle')
                     setTheme(t)
                   }}
                 />
@@ -286,13 +344,20 @@ function Shell({ state, setState }: { state: State | null; setState: (s: State) 
 
       <main className="screen">
         <AnimatePresence mode="wait">
-          <motion.div key={page} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
-            {(page === 'today' || (page.startsWith('m:') && !mod)) && <Today state={state} refresh={refresh} notify={notify} go={go} />}
-            {mod && <ModulePage key={mod.id} mod={mod} notify={notify} onChange={refresh} onDeleted={() => (go('today'), void refresh())} />}
-            {page === 'memory' && <Memory notify={notify} />}
-            {page === 'mail' && <Mail notify={notify} onChange={refresh} />}
-            {page === 'github' && <GitHub notify={notify} />}
-            {page === 'settings' && <Settings state={state} refresh={refresh} notify={notify} replay={() => setReplay(true)} theme={theme} setTheme={setTheme} />}
+          <motion.div
+            key={base}
+            initial={{ opacity: 0, x: 18, scale: 0.995 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 34, opacity: { duration: 0.15 } }}
+          >
+            {(base === 'today' || (base.startsWith('m:') && !mod)) && <Today state={state} refresh={refresh} notify={notify} />}
+            {mod && <ModulePage key={mod.id} mod={mod} focus={focus} notify={notify} onChange={refresh} onDeleted={() => (go('today'), void refresh())} />}
+            {base === 'memory' && <Memory notify={notify} />}
+            {base === 'notes' && <Notes notify={notify} />}
+            {base === 'mail' && <Mail focus={focus} notify={notify} onChange={refresh} />}
+            {base === 'github' && <GitHub notify={notify} />}
+            {base === 'settings' && <Settings state={state} refresh={refresh} notify={notify} replay={() => setReplay(true)} theme={theme} setTheme={setTheme} />}
           </motion.div>
         </AnimatePresence>
       </main>

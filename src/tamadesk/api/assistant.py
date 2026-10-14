@@ -45,7 +45,12 @@ def ask(body: AskIn, conn: Conn) -> StreamingResponse:
         steps, text, c = [], "", db.connect(s.db_path)
         yield json.dumps({"type": "chat", "chat_id": chat["id"]}) + "\n"
         try:
-            for ev in runner.stream(s, cmd):
+            for ev in runner.stream(s, cmd, key=chat["id"]):
+                if ev["type"] == "stopped":  # the user pressed stop: keep what was said so far
+                    text = (text + "\n\n(stopped)").strip()
+                    c.execute("INSERT INTO messages (chat_id, role, text, steps) VALUES (?, 'assistant', ?, ?)",
+                              (chat["id"], text, json.dumps(steps)))  # fmt: skip
+                    ev = {"type": "done", "text": text, "error": False, "cost_usd": None, "tokens": 0}
                 if ev["type"] == "session" and ev["session_id"]:
                     c.execute("UPDATE chats SET session_id = ? WHERE id = ?", (ev["session_id"], chat["id"]))
                 if ev["type"] == "tool":
@@ -76,6 +81,11 @@ def ask(body: AskIn, conn: Conn) -> StreamingResponse:
             c.close()
 
     return StreamingResponse(events(), media_type="application/x-ndjson")
+
+
+@router.post("/ask/{chat_id}/stop")
+def stop(chat_id: int) -> dict:
+    return {"stopped": runner.stop(chat_id)}
 
 
 @router.get("/chats")

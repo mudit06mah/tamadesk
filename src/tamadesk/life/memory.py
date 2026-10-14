@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from tamadesk.brain import Brain
-from tamadesk.core import db
+from tamadesk.core import clock, db
 from tamadesk.core.config import Settings
 
 DIGEST_SCHEMA = {
@@ -41,7 +41,8 @@ RAW_KINDS = ("chat_user", "chat_assistant", "log", "todo", "mail", "kept")
 
 
 def today() -> str:
-    return datetime.now().astimezone().date().isoformat()
+    """The user's current day as YYYY-MM-DD (it turns over mid-night, see core/clock.py)."""
+    return clock.today().isoformat()
 
 
 def day_text(conn: sqlite3.Connection, day: str, limit: int = 14000) -> str:
@@ -57,12 +58,14 @@ def day_text(conn: sqlite3.Connection, day: str, limit: int = 14000) -> str:
 
 
 def memory_dir(s: Settings) -> Path:
+    """The memory folder (markdown, the source of truth)."""
     d = s.home / "memory"
     d.mkdir(exist_ok=True)
     return d
 
 
 def to_markdown(day: str, summary: str, facts: list[dict]) -> str:
+    """A day's memory file: summary, then facts with their tags."""
     title = date.fromisoformat(day).strftime("%A %d %B %Y")
     lines = [f"# {title}", "", summary.strip(), "", "## Facts"]
     for f in facts:
@@ -86,6 +89,7 @@ def from_markdown(text: str) -> tuple[str, list[dict]]:
 
 
 def index_day(conn: sqlite3.Connection, day: str, summary: str, facts: list[dict]) -> None:
+    """Replace a day's rows in the search index with its summary and facts."""
     with db.transaction(conn):
         conn.execute("DELETE FROM memories WHERE day = ?", (day,))
         if summary:
@@ -174,6 +178,7 @@ def search(
 
 
 def day_notes(conn: sqlite3.Connection, day: str) -> dict:
+    """Everything remembered about one day."""
     mem = conn.execute("SELECT kind, text, tags FROM memories WHERE day = ? ORDER BY id", (day,)).fetchall()
     return {
         "day": day,
@@ -184,6 +189,7 @@ def day_notes(conn: sqlite3.Connection, day: str) -> dict:
 
 
 def recent(conn: sqlite3.Connection, days: int = 4) -> list[dict]:
+    """Digests of the last few days, for Bolt's prompt."""
     since = (date.fromisoformat(today()) - timedelta(days=days)).isoformat()
     rows = conn.execute(
         "SELECT day, text FROM memories WHERE kind = 'digest' AND day >= ? ORDER BY day", (since,)

@@ -1,12 +1,28 @@
 title: Lead finder
-blurb: Finds companies or people who might need what you offer, from a web search. Swipe to keep.
+blurb: Finds companies or people who might need what you offer, from a web search.
+  Swipe to keep.
 icon: target
 params:
-  who: {label: "Who are you looking for?", default: "small e-commerce brands in Europe that run Instagram ads"}
+  who:
+    label: Who are you looking for?
+    default: small e-commerce brands in Europe that run Instagram ads
 module:
   name: Leads
   icon: target
   every: 7d
   sources:
-    - {type: exa, query: "category:company ${who}", limit: 15, objective: "company homepages, not lists or articles"}
-  actions: [save, skip, draft, todo, open]
+  - type: exa
+    query: category:company ${who}
+    limit: 15
+    objective: company homepages, not lists or articles
+  actions:
+  - save
+  - skip
+  - draft
+  - todo
+  - open
+  workflows:
+  - label: Email them
+    prompt: For each lead below, research them briefly and draft a short, specific
+      outreach email in Mail about what I offer (read my product brief with read_doc
+      if I have one). Only use published addresses.

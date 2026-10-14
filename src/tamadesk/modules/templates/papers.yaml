@@ -2,12 +2,29 @@ title: Research papers
 blurb: Fresh arXiv papers on your topics every morning. Free, no tokens.
 icon: book
 params:
-  topics: {label: "Topics (comma separated)", default: "large language models", from: interests}
+  topics:
+    label: Topics (comma separated)
+    default: large language models
+    from: interests
 module:
   name: Papers
   icon: book
   every: daily 08:00
   sources:
-    - {type: arxiv, query: "${topics}"}
-  interests: ["${topics}"]
-  actions: [save, skip, summarize, open]
+  - type: arxiv
+    query: ${topics}
+  interests:
+  - ${topics}
+  actions:
+  - save
+  - skip
+  - summarize
+  - open
+  workflows:
+  - label: Write a blog post
+    prompt: Read the papers below (abstracts via read_page if needed) and write a
+      blog post draft in my voice that connects them for a curious developer audience.
+      Save it with write_note.
+  - label: Study notes
+    prompt: 'Turn each paper below into short study notes: the problem, the idea,
+      the result, and why it might matter to me. Save them as one note with write_note.'

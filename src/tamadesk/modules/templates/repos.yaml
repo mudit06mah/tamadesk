@@ -1,12 +1,29 @@
 title: GitHub radar
-blurb: Rising open-source repos in your area. Great for finding projects to contribute to.
+blurb: Rising open-source repos in your area. Great for finding projects to contribute
+  to.
 icon: code
 params:
-  topics: {label: "GitHub search (e.g. topic:kubernetes language:go)", default: "topic:devtools"}
+  topics:
+    label: GitHub search (e.g. topic:kubernetes language:go)
+    default: topic:devtools
 module:
   name: Repos
   icon: code
   every: daily 09:00
   sources:
-    - {type: github, query: "${topics}", days: 30}
-  actions: [save, skip, todo, open]
+  - type: github
+    query: ${topics}
+    days: 30
+  actions:
+  - save
+  - skip
+  - todo
+  - open
+  workflows:
+  - label: Compare them
+    prompt: 'Use repo_info on each repo below and save a comparison note (table: stars,
+      last push, license, latest release, what it''s for) with write_note, then tell
+      me which looks best and why.'
+  - label: Plan a contribution
+    prompt: Pick the repo below that best fits my stack and find one good first issue
+      there; add a todo with the link.

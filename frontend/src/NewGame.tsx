@@ -8,7 +8,7 @@ import { Companion } from './Companion'
 import { useFx } from './fx/Fx'
 import { play } from './fx/sound'
 import { TemplateCard, usePicks, useTemplates } from './Templates'
-import { Win } from './ui'
+import { DayTimes, Win } from './ui'
 
 function Typewriter({ text, onDone }: { text: string; onDone?: () => void }) {
   const reduce = useReducedMotion()
@@ -41,7 +41,7 @@ function Typewriter({ text, onDone }: { text: string; onDone?: () => void }) {
   )
 }
 
-type Step = { k: 'title' } | { k: 'q'; i: number } | { k: 'pick' } | { k: 'watch' } | { k: 'samples' } | { k: 'brain' }
+type Step = { k: 'title' } | { k: 'q'; i: number } | { k: 'day' } | { k: 'pick' } | { k: 'watch' } | { k: 'samples' } | { k: 'brain' }
 
 export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boolean }) {
   const fx = useFx()
@@ -57,24 +57,32 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
   const [samples, setSamples] = useState(0)
   const [brain, setBrain] = useState<{ ok: boolean; name: string; detail: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [day, setDay] = useState({ wake: '08:00', bed: '23:00' }) // their day: wake to bed, recap at bedtime
   const templates = useTemplates()
   const watch = usePicks(true, about.interests ?? '')
   const [err, setErr] = useState('')
 
   useEffect(() => {
     void api.onboarding().then((o) => {
-      setQuestions(o.questions)
+      // a first game asks only who you are and what you're after; the rest is in Settings, or Bolt asks
+      setQuestions(replay ? o.questions : o.questions.filter((q) => q.core))
       setCompanions(o.companions)
     })
     void api.state().then((s) => {
       setAbout(s.about)
       setSamples(s.samples)
+      if (replay) setDay({ wake: s.day.wake, bed: s.day.bed })
       if (s.companion) {
         setSpecies(s.companion.species)
         setName(s.companion.name)
       }
     })
-  }, [])
+  }, [replay])
+
+  // a first game skips the tab gallery and the writing samples: the example chips and Mail lead there later
+  const steps: Step['k'][] = replay ? ['day', 'pick', 'watch', 'samples', 'brain'] : ['day', 'pick', 'brain']
+  const after = (k: Step['k']) => steps[steps.indexOf(k) + 1] ?? 'brain'
+  const before = (k: Step['k']) => steps[steps.indexOf(k) - 1]
 
   // title screen: any key starts
   useEffect(() => {
@@ -94,25 +102,21 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
   const next = () => {
     play('tap')
     setTyped(false)
-    if (step.k === 'q') setStep(step.i + 1 < questions.length ? { k: 'q', i: step.i + 1 } : { k: 'pick' })
-    else if (step.k === 'pick') setStep({ k: 'watch' })
-    else if (step.k === 'watch') setStep({ k: 'samples' })
-    else if (step.k === 'samples') setStep({ k: 'brain' })
+    if (step.k === 'q') setStep(step.i + 1 < questions.length ? { k: 'q', i: step.i + 1 } : { k: steps[0] } as Step)
+    else if (step.k !== 'title') setStep({ k: after(step.k) } as Step)
   }
   const back = () => {
     play('tap')
     if (step.k === 'q' && step.i > 0) setStep({ k: 'q', i: step.i - 1 })
-    else if (step.k === 'pick') setStep({ k: 'q', i: questions.length - 1 })
-    else if (step.k === 'watch') setStep({ k: 'pick' })
-    else if (step.k === 'samples') setStep({ k: 'watch' })
-    else if (step.k === 'brain') setStep({ k: 'samples' })
+    else if (step.k === steps[0]) setStep({ k: 'q', i: questions.length - 1 })
+    else if (step.k !== 'title' && step.k !== 'q' && before(step.k)) setStep({ k: before(step.k) } as Step)
   }
 
   const finish = async () => {
     if (!species) return
     setBusy(true)
     try {
-      await api.newGame(about, { species, name: name.trim() || 'buddy' }, watch.picks)
+      await api.newGame(about, { species, name: name.trim() || 'buddy' }, watch.picks, day)
       play('start')
       fx.banner({ kind: 'goal', title: replay ? 'SAVED!' : 'GAME START!', sub: `${name || 'Your companion'} moved onto your desk. Let's get things done.` })
       onReady()
@@ -135,8 +139,8 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
     }
   }
 
-  const total = questions.length + 4
-  const at = step.k === 'q' ? step.i : questions.length + ['pick', 'watch', 'samples', 'brain'].indexOf(step.k)
+  const total = questions.length + steps.length
+  const at = step.k === 'q' ? step.i : questions.length + steps.indexOf(step.k)
 
   if (step.k === 'title') {
     return (
@@ -195,20 +199,41 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
                       onChange={(e) => setAbout({ ...about, [questions[step.i].key]: e.target.value })}
                     />
                   ) : (
-                    <textarea
-                      autoFocus
-                      className="ng-input"
-                      rows={3}
-                      value={about[questions[step.i].key] ?? ''}
-                      placeholder={questions[step.i].hint}
-                      onChange={(e) => setAbout({ ...about, [questions[step.i].key]: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault()
-                          next()
-                        }
-                      }}
-                    />
+                    <>
+                      {questions[step.i].options && (
+                        // one tap for the common answers; a trailing space means "now say what in"
+                        <div className="chips ng-options">
+                          {questions[step.i].options!.map((o) => (
+                            <button
+                              type="button"
+                              key={o}
+                              className={`chip ${about[questions[step.i].key] === o ? 'on' : ''}`}
+                              onClick={() => {
+                                setAbout({ ...about, [questions[step.i].key]: o })
+                                requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea.ng-input')?.focus())
+                              }}
+                            >
+                              {o.trim()}
+                              {o.endsWith(' ') ? '…' : ''}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <textarea
+                        autoFocus
+                        className="ng-input"
+                        rows={3}
+                        value={about[questions[step.i].key] ?? ''}
+                        placeholder={questions[step.i].hint}
+                        onChange={(e) => setAbout({ ...about, [questions[step.i].key]: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            next()
+                          }
+                        }}
+                      />
+                    </>
                   )}
                 </motion.div>
                 <div className="ng-actions">
@@ -228,6 +253,22 @@ export function NewGame({ onReady, replay }: { onReady: () => void; replay?: boo
             </Win>
           )}
 
+          {step.k === 'day' && (
+            <Win title="day.cfg" className="ng-win">
+              <h2 className="ng-q">When does your day start and end?</h2>
+              <p className="muted">On a usual day. Your recap comes at bedtime, so a night owl's day still ends with one.</p>
+              <DayTimes wake={day.wake} bed={day.bed} onChange={(wake, bed) => setDay({ wake, bed })} />
+              <div className="ng-actions">
+                <button className="btn ghost" onClick={back}>
+                  ← back
+                </button>
+                <span />
+                <button className="btn solid" onClick={next}>
+                  That's my day →
+                </button>
+              </div>
+            </Win>
+          )}
           {step.k === 'pick' && (
             <Win title="choose_companion.exe" className="ng-win wide">
               <h2 className="ng-q">Choose your companion.</h2>

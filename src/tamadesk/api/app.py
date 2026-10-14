@@ -16,10 +16,13 @@ from tamadesk.api.routes import router
 from tamadesk.core import db
 from tamadesk.core.config import get_settings
 
-DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
+# the UI: built into the package for installs (pip/uvx), or frontend/dist when running from the repo
+PACKAGED = Path(__file__).resolve().parents[1] / "web"
+DIST = PACKAGED if PACKAGED.is_dir() else Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
 
 def create_app(scheduler: bool = True) -> FastAPI:
+    """The desk's web app: API routes, the built frontend at /, and (unless tests turn it off) the scheduler."""
     s = get_settings()
     conn = db.connect(s.db_path)
     db.migrate(conn)

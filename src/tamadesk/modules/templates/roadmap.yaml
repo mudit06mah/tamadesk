@@ -1,0 +1,32 @@
+title: Learning roadmap
+blurb: Something to learn, step by step. Give the topics in order (or paste a syllabus to Bolt) and
+  each one gets the few best videos to watch. Tick them off as you go.
+icon: book
+params:
+  subject:
+    label: What are you learning?
+    default: neural networks
+  topics:
+    label: Topics in order (one per line, or comma separated)
+    default: perceptrons, gradient descent, backpropagation, convolutional networks, transformers
+module:
+  name: Roadmap
+  icon: book
+  layout: steps
+  every: 30d
+  sources:
+  - type: roadmap
+    subject: ${subject}
+    topics: ${topics}
+  actions:
+  - done
+  - skip
+  - open
+  - summarize
+  workflows:
+  - label: Quiz me
+    prompt: Quiz me on the topics I've watched below, five short questions, one at a time, and tell me
+      what to rewatch if I miss one.
+  - label: Study notes
+    prompt: Write compact study notes for the topics below, in order, with the one key idea of each and
+      how it connects to the next.

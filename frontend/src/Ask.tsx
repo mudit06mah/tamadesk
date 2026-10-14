@@ -3,17 +3,17 @@
 // "log …" are handled instantly on the desk itself and cost nothing.
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
-import { type ChatMsg, type Step } from './api'
+import { api, type ChatMsg, type Step } from './api'
 import { FREE, useAsk } from './AskStore'
-import { Companion, useCompanion, type Mood } from './Companion'
+import { BuddyRing } from './Buddy'
+import { useCompanion, type Mood } from './Companion'
 import { useFx } from './fx/Fx'
 import { Markdown } from './Markdown'
-import { Bar } from './ui'
 
 const POKES = ['hehe', 'that tickles!', "I'm awake, I'm awake", 'one thing at a time :)', '*happy wiggle*', 'boop']
 
 /** What each tool call looks like to a person. */
-export function stepLabel(st: Step): string {
+function stepLabel(st: Step): string {
   const i = st.input as Record<string, string & Record<string, string>>
   const name = st.name.replace(/^mcp__\w+?__/, '')
   const q = i.params?.query ?? i.params?.url ?? i.query ?? ''
@@ -49,22 +49,41 @@ function examples(interests: string): string[] {
   ]
 }
 
+// what a free line becomes, for the hint under the box
+const KINDS: [RegExp, string][] = [
+  [/^\s*(done|finished|✓)\b/i, 'tick it off'],
+  [/^\s*(remove|delete|drop|cancel|stop)\s/i, 'remove it'],
+  [/^\s*(move|push|snooze|postpone)\b/i, 'new deadline'],
+  [/^\s*waiting\b/i, 'waiting on'],
+  [/^\s*(meeting|mtg|call|meet)\b/i, 'meeting'],
+  [/^\s*focus\b/i, 'focus session'],
+  [/^\s*remind\b/i, 'reminder'],
+  [/^\s*(log\b|>)/i, 'log'],
+  [/^\s*(todo\b|t:|\[|-\s*\[)/i, 'todo'],
+]
+function freeLabel(t: string): string {
+  const kind = KINDS.find(([rx]) => rx.test(t))?.[1] ?? "what's next"
+  return /\bevery\s|\b(daily|weekly|monthly|weekdays)\b/i.test(t) && kind !== "what's next" ? `${kind} · repeats` : kind
+}
+
 export function AskPanel({
   greeting,
   mood,
   interests,
   level,
+  stats,
   cheer: outerCheer = 0,
 }: {
   greeting: string
   mood: Mood
   interests: string
   level: { level: number; xp: number; into: number; need: number }
+  stats: { done: number; goal: number; streak: number; freezes?: number }
   cheer?: number
 }) {
   const fx = useFx()
   const buddy = useCompanion()
-  const { text, setText, msgs, live, chatId, chats, usage, send, openChat, focusTick, doneTick } = useAsk()
+  const { text, setText, msgs, live, chatId, chats, usage, send, stop, openChat, focusTick, doneTick } = useAsk()
   const [poke, setPoke] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const logRef = useRef<HTMLDivElement>(null)
@@ -74,37 +93,58 @@ export function AskPanel({
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: 'smooth' })
   }, [msgs, live])
+  // a button that hands you a prompt: bring the box into view and put the cursor at the end to edit
   useEffect(() => {
-    if (focusTick) inputRef.current?.focus()
+    const el = inputRef.current
+    if (!focusTick || !el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.focus({ preventScroll: true })
+    el.setSelectionRange(el.value.length, el.value.length)
   }, [focusTick])
+  // the box grows with what's in it (up to a point), so a long prefilled prompt is readable
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 360)}px`
+  }, [text])
 
   const lastStep = live?.steps.at(-1)
   const say = poke ?? (running ? (lastStep ? `${stepLabel(lastStep)}…` : 'On it…') : msgs.length ? 'Anything else?' : greeting)
-  const free = FREE.test(text)
+  // shortcuts you haven't tried yet lead the example chips; each makes room once you've used it
+  const [tips, setTips] = useState<string[]>([])
+  useEffect(() => {
+    api.tips().then(setTips, () => setTips([]))
+  }, [doneTick, msgs.length])
+  const free = FREE.test(text) ? freeLabel(text) : null
   const spent = usage ? usage.usd / usage.daily_usd : 0
 
   return (
     <section className="ask">
       <div className="ask-head">
         <div className="ask-buddy">
-          <Companion
+          <BuddyRing
             mood={running ? 'happy' : poke ? 'happy' : mood}
-            size={104}
             cheer={cheer}
+            level={level}
+            stats={stats}
+            lean={!!text && !running}
+            working={running}
             onPoke={() => {
               fx.sound('poke')
               setPoke(POKES[Math.floor(Math.random() * POKES.length)])
               setTimeout(() => setPoke(null), 1800)
             }}
           />
-          <div className="lv-mini" title={`${level.xp} XP · ${level.need - level.into} to next level`}>
-            <b>LV {level.level}</b>
-            <Bar value={level.into / Math.max(1, level.need)} label="XP to next level" />
-          </div>
         </div>
         <div className="ask-main">
-          <motion.div key={say} className={`bubble ask-bubble ${running ? 'working' : ''}`} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
-            {say}
+          {/* the bubble stays put and resizes; only its words crossfade (no jumpy re-entrance per step) */}
+          <motion.div layout className={`bubble ask-bubble ${running ? 'working' : ''}`} transition={{ type: 'spring', stiffness: 500, damping: 38 }}>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span key={say} className="bubble-text" initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: 0.14 }}>
+                {say}
+              </motion.span>
+            </AnimatePresence>
           </motion.div>
           <form
             className={`ask-box ${running ? 'busy' : ''}`}
@@ -115,10 +155,13 @@ export function AskPanel({
           >
             <textarea
               ref={inputRef}
-              rows={2}
+              rows={3}
               value={text}
               disabled={running}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value)
+                fx.sound('key')
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -130,7 +173,7 @@ export function AskPanel({
             />
             <div className="ask-row">
               <span className={`ask-hint ${free ? 'free' : ''}`}>
-                {free ? 'instant · free' : running ? `${buddy.name} is working…` : `↵ ask ${buddy.name}`}
+                {free ? `instant · free · ${free}` : running ? `${buddy.name} is working…` : `↵ ask ${buddy.name}`}
               </span>
               {usage && (
                 <span className="ask-budget" title={`${usage.model}, ${usage.effort} effort · max $${usage.max_usd_per_ask.toFixed(2)} per ask`}>
@@ -138,14 +181,20 @@ export function AskPanel({
                   <i style={{ width: `${Math.min(100, spent * 100)}%` }} />
                 </span>
               )}
-              <motion.button className="btn solid" whileTap={{ scale: 0.9 }} disabled={running || !text.trim()}>
-                {running ? <span className="blink">working</span> : 'Go ▶'}
-              </motion.button>
+              {running ? (
+                <motion.button type="button" className="btn stop-btn" whileTap={{ scale: 0.9 }} onClick={stop} aria-label={`Stop ${buddy.name}`}>
+                  ■ stop
+                </motion.button>
+              ) : (
+                <motion.button className="btn solid" whileTap={{ scale: 0.9 }} disabled={!text.trim()}>
+                  Go ▶
+                </motion.button>
+              )}
             </div>
           </form>
           {!msgs.length && !running && (
             <div className="ask-examples">
-              {examples(interests).map((ex) => (
+              {[...tips, ...examples(interests)].slice(0, 4).map((ex) => (
                 <motion.button key={ex} className="chip" whileTap={{ scale: 0.94 }} onClick={() => (setText(ex), inputRef.current?.focus())}>
                   {ex}
                 </motion.button>

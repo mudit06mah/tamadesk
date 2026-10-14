@@ -1,12 +1,26 @@
 title: Web watch
-blurb: Keeps an eye on the web for anything you describe, e.g. "new open-source note-taking apps".
+blurb: Keeps an eye on the web for anything you describe, e.g. "new open-source note-taking
+  apps".
 icon: eye
 params:
-  what: {label: "What should I watch for?", default: "new open-source developer tools launches", from: interests}
+  what:
+    label: What should I watch for?
+    default: new open-source developer tools launches
+    from: interests
 module:
   name: Watch
   icon: eye
   every: daily 10:00
   sources:
-    - {type: exa, query: "${what}", limit: 10}
-  actions: [save, skip, summarize, open]
+  - type: exa
+    query: ${what}
+    limit: 10
+  actions:
+  - save
+  - skip
+  - summarize
+  - open
+  workflows:
+  - label: Summarize
+    prompt: Read the pages below and save a short summary note of what's new, with
+      links, using write_note.

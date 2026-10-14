@@ -44,7 +44,6 @@ export const THEMES: Record<string, Palette> = {
   vampire: { name: 'Vampire', dark: true, desk: '#1e1f29', dot: '#282a36', win: '#282a36', win2: '#343746', line: '#bd93f9', ink: '#0d0e13', text: '#f8f8f2', muted: '#a4a8c4', accent: '#bd93f9', soft: '#44475a', butter: '#f1fa8c', coral: '#ffb86c', sage: '#2f3d3a', sageStrong: '#50fa7b', paper: '#f8f8f2', blush: '#ff79c6', invBg: '#bd93f9', invFg: '#1e1f29', good: '#50fa7b', bad: '#ff5555', field: '#21222c' },
 }
 
-export type ThemeId = keyof typeof THEMES
 
 const VARS: [keyof Palette, string][] = [
   ['desk', 'desk'], ['dot', 'desk-dot'], ['win', 'win'], ['win2', 'win-2'], ['line', 'line'], ['ink', 'ink'],
@@ -53,9 +52,15 @@ const VARS: [keyof Palette, string][] = [
   ['invBg', 'inverse-bg'], ['invFg', 'inverse-fg'], ['good', 'good'], ['bad', 'bad'], ['field', 'field'],
 ]
 
+let fade: number | undefined
+
 export function applyTheme(id: string) {
   const t = THEMES[id] ?? THEMES.paper
   const root = document.documentElement
+  // colours glide to the new theme instead of snapping (only while switching, so hovers stay instant)
+  root.classList.add('theming')
+  window.clearTimeout(fade)
+  fade = window.setTimeout(() => root.classList.remove('theming'), 600)
   for (const [k, v] of VARS) root.style.setProperty(`--${v}`, t[k] as string)
   root.style.setProperty('--r', t.r ?? '12px')
   root.style.colorScheme = t.dark ? 'dark' : 'light'

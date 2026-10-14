@@ -84,7 +84,6 @@ const SPECIES: Record<string, Species> = {
   },
 }
 
-export const SPECIES_IDS = Object.keys(SPECIES)
 
 export type CompanionInfo = { species: string; name: string }
 export const CompanionCtx = createContext<CompanionInfo>({ species: 'blob', name: 'buddy' })
@@ -96,7 +95,10 @@ export function Companion({
   size = 84,
   cheer = 0,
   onPoke,
+  still = false,
 }: {
+  /** a picture only (e.g. inside the companion wheel): no poke, so it can sit inside another button */
+  still?: boolean
   species?: string
   mood?: Mood
   size?: number
@@ -140,16 +142,14 @@ export function Companion({
     if (!reduce) void animate(scope.current, { rotate: [0, -10, 9, -6, 4, 0], scaleY: [1, 0.88, 1.05, 1] }, { duration: 0.5 })
   }
 
+  const Hit = still ? 'span' : 'button'
   const eyes = sp.eyes[blink && mood !== 'sleepy' ? 'blink' : mood]
   const rows = [...sp.top, ...eyes, ...sp.bottom]
   const w = rows[0].length
   const h = rows.length
-  const loop =
-    reduce
-      ? undefined
-      : mood === 'happy'
-        ? { y: [0, -7, 0, 0], scaleY: [1, 1.05, 0.9, 1], scaleX: [1, 0.96, 1.08, 1] }
-        : { scaleY: [1, 0.96, 1], scaleX: [1, 1.03, 1] }
+  // the idle loops (breathe, a little hop when happy) are CSS animations on transform: the GPU runs
+  // them, so a companion sitting on the desk costs the page nothing frame to frame
+  const loop = reduce ? '' : mood === 'happy' ? 'loop-hop' : mood === 'sleepy' ? 'loop-breathe slow' : 'loop-breathe'
 
   return (
     <div className="companion" style={{ width: size }}>
@@ -157,31 +157,21 @@ export function Companion({
         {mood === 'sleepy' && !reduce && (
           <motion.div className="zzz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             {[0, 1, 2].map((i) => (
-              <motion.span
-                key={i}
-                animate={{ y: [0, -26], x: [0, 8 + i * 3], opacity: [0, 1, 0] }}
-                transition={{ duration: 2.4, delay: i * 0.8, repeat: Infinity }}
-              >
+              <span key={i} className="z-rise" style={{ animationDelay: `${i * 0.8}s`, ['--zx' as string]: `${8 + i * 3}px` }}>
                 z
-              </motion.span>
+              </span>
             ))}
           </motion.div>
         )}
       </AnimatePresence>
-      <button className="companion-hit" onClick={poke} aria-label="Poke your companion" type="button">
+      <Hit className="companion-hit" {...(still ? {} : { onClick: poke, 'aria-label': 'Poke your companion', type: 'button' as const })}>
         <motion.div ref={scope} style={{ transformOrigin: '50% 100%' }}>
-          <motion.svg
+          <svg
+            className={`companion-sprite ${loop}`}
             width={size}
             height={(size * h) / w}
             viewBox={`0 0 ${w} ${h}`}
             shapeRendering="crispEdges"
-            style={{ transformOrigin: '50% 100%', display: 'block' }}
-            animate={loop}
-            transition={
-              mood === 'happy'
-                ? { duration: 0.9, repeat: Infinity, repeatDelay: 0.5 }
-                : { duration: mood === 'sleepy' ? 4 : 2.6, repeat: Infinity, ease: 'easeInOut' }
-            }
             role="img"
             aria-label="your companion"
           >
@@ -190,14 +180,10 @@ export function Companion({
                 c === '.' ? null : <rect key={`${x}-${y}`} x={x} y={y} width="1.02" height="1.02" fill={sp.fill[c]} />,
               ),
             )}
-          </motion.svg>
+          </svg>
         </motion.div>
-      </button>
-      <motion.div
-        className="companion-shadow"
-        animate={reduce || mood !== 'happy' ? undefined : { scaleX: [1, 0.7, 1, 1] }}
-        transition={{ duration: 0.9, repeat: Infinity, repeatDelay: 0.5 }}
-      />
+      </Hit>
+      <div className={`companion-shadow ${!reduce && mood === 'happy' ? 'loop-hop-shadow' : ''}`} />
     </div>
   )
 }

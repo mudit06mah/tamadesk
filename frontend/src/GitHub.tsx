@@ -13,6 +13,8 @@ const ago = (iso: string) => {
   return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d}d ago`
 }
 
+const stale = (iso: string) => Date.now() - utc(iso).getTime() > 60 * 86_400_000
+
 function badges(r: GhRow) {
   const out: [string, string][] = []
   if (r.draft) out.push(['draft', 'muted'])
@@ -101,15 +103,19 @@ export function GitHub({ notify }: { notify: (t: string, k?: Toast['kind']) => v
               stuck ? `Which of my ${stuck} stuck PRs should I fix first, and what's blocking each?` : 'Summarize where my open PRs stand',
               'Remind me to follow up on PRs with no review by Friday',
               'Find good first issues in projects like the ones I contribute to',
+              'Which of my repos should I revive, finish or archive?',
             ].map((t) => (
-              <motion.button key={t} className="chip" whileTap={{ scale: 0.94 }} onClick={() => askBolt(t, true)}>
+              <motion.button key={t} className="chip" whileTap={{ scale: 0.94 }} onClick={() => askBolt(t)}>
                 {t}
               </motion.button>
             ))}
           </div>
+          {!gh ? (
+            <p className="loading">asking GitHub…</p>
+          ) : (
           <div className="gh-grid">
             <Win title={`my_prs (${prs.length})`} className="gh-prs">
-              {gh ? <Rows rows={prs} empty="No open pull requests. Ship something!" /> : <p className="loading">asking GitHub…</p>}
+              <Rows rows={prs} empty="No open pull requests. Ship something!" />
             </Win>
             <Win title={`assigned (${gh?.issues?.length ?? 0})`}>
               <Rows rows={gh?.issues ?? []} empty="No issues assigned to you." />
@@ -117,7 +123,33 @@ export function GitHub({ notify }: { notify: (t: string, k?: Toast['kind']) => v
             <Win title={`to_review (${gh?.reviews?.length ?? 0})`}>
               <Rows rows={gh?.reviews ?? []} empty="Nobody is waiting on your review." />
             </Win>
+            <Win title={`shipped_this_week (${gh?.shipped?.length ?? 0})`}>
+              <Rows rows={gh?.shipped ?? []} empty="Nothing merged in the last 7 days." />
+            </Win>
+            <Win title="your_repos" className="gh-repos">
+              {gh?.repos?.length ? (
+                <ul className="gh-rows">
+                  {gh.repos.map((r) => (
+                    <li key={r.repo} className={stale(r.pushed_at) ? 'stale' : ''}>
+                      <a href={r.url} target="_blank" rel="noreferrer" className="gh-title">
+                        {r.repo.split('/')[1]}
+                      </a>
+                      <div className="gh-meta">
+                        <span className="muted small">
+                          pushed {ago(r.pushed_at)} · ★ {r.stars}
+                          {r.open_issues ? ` · ${r.open_issues} open issues` : ''}
+                        </span>
+                        {stale(r.pushed_at) && <span className="gh-badge warn">gathering dust</span>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted small">No repos of your own yet.</p>
+              )}
+            </Win>
           </div>
+          )}
         </>
       )}
     </div>
