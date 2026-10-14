@@ -1,4 +1,5 @@
 # tamadesk
+<img width="1285" height="735" alt="image" src="https://github.com/user-attachments/assets/92316b48-893e-4dfc-8baa-11fabd25d1ec" />
 
 A tiny pixel companion that lives on your desk and turns your day into an adventure.
 
@@ -12,6 +13,8 @@ The writing is done by **your own** Claude Code (or a local model via Ollama).
 > Status: early, playable alpha. Expect sharp edges and new companions.
 
 ## What it does
+<img width="1870" height="879" alt="image" src="https://github.com/user-attachments/assets/d2118321-3e90-46b5-94a0-d9bb480cd56a" />
+
 
 **Ask your companion to do things, and it does them.** One box at the top of your desk:
 
